@@ -249,7 +249,7 @@ def _find_codesign_identities(identity=None):
   _, output, _ = execute.execute_and_filter_output([
       "security",
       "find-identity",
-      "-v",
+      #"-v",
       "-p",
       "codesigning",
   ], raise_on_failure=True)
