@@ -27,6 +27,14 @@ load(
     "apple_product_type",
 )
 load(
+    "@build_bazel_rules_apple//apple/internal:bundling_support.bzl",
+    "bundle_id_suffix_default",
+)
+load(
+    "@build_bazel_rules_apple//apple/internal:providers.bzl",
+    "new_macosxctestbundleinfo",
+)
+load(
     "@build_bazel_rules_apple//apple/internal:rule_attrs.bzl",
     "rule_attrs",
 )
@@ -51,7 +59,6 @@ load(
     "AppleBundleInfo",
     "MacosApplicationBundleInfo",
     "MacosFrameworkBundleInfo",
-    "MacosXcTestBundleInfo",
 )
 
 _MACOS_TEST_HOST_PROVIDERS = [[AppleBundleInfo, MacosApplicationBundleInfo]]
@@ -62,7 +69,7 @@ def _macos_ui_test_bundle_impl(ctx):
         ctx = ctx,
         product_type = apple_product_type.ui_test_bundle,
     ) + [
-        MacosXcTestBundleInfo(),
+        new_macosxctestbundleinfo(),
     ]
 
 def _macos_unit_test_bundle_impl(ctx):
@@ -71,19 +78,19 @@ def _macos_unit_test_bundle_impl(ctx):
         ctx = ctx,
         product_type = apple_product_type.unit_test_bundle,
     ) + [
-        MacosXcTestBundleInfo(),
+        new_macosxctestbundleinfo(),
     ]
 
 def _macos_ui_test_impl(ctx):
     """Implementation of macos_ui_test."""
     return apple_test_rule_support.apple_test_rule_impl(ctx, "xcuitest") + [
-        MacosXcTestBundleInfo(),
+        new_macosxctestbundleinfo(),
     ]
 
 def _macos_unit_test_impl(ctx):
     """Implementation of macos_unit_test."""
     return apple_test_rule_support.apple_test_rule_impl(ctx, "xctest") + [
-        MacosXcTestBundleInfo(),
+        new_macosxctestbundleinfo(),
     ]
 
 # Declare it with an underscore to hint that this is an implementation detail in bazel query-s.
@@ -101,11 +108,10 @@ _macos_internal_ui_test_bundle = rule_factory.create_apple_rule(
             is_test_supporting_rule = True,
             requires_legacy_cc_toolchain = True,
         ),
-        rule_attrs.bundle_id_attrs(is_mandatory = False),
         rule_attrs.common_bundle_attrs(
             deps_cfg = transition_support.apple_platform_split_transition,
         ),
-        rule_attrs.common_tool_attrs,
+        rule_attrs.common_tool_attrs(),
         rule_attrs.device_family_attrs(
             allowed_families = rule_attrs.defaults.allowed_families.macos,
             is_mandatory = False,
@@ -117,10 +123,12 @@ _macos_internal_ui_test_bundle = rule_factory.create_apple_rule(
             add_environment_plist = True,
             platform_type = "macos",
         ),
-        rule_attrs.provisioning_profile_attrs(
+        rule_attrs.signing_attrs(
+            default_bundle_id_suffix = bundle_id_suffix_default.bundle_name,
+            supports_capabilities = False,
             profile_extension = ".provisionprofile",
         ),
-        rule_attrs.test_bundle_attrs,
+        rule_attrs.test_bundle_attrs(),
         rule_attrs.test_host_attrs(
             aspects = rule_attrs.aspects.test_host_aspects,
             is_mandatory = True,
@@ -181,11 +189,10 @@ _macos_internal_unit_test_bundle = rule_factory.create_apple_rule(
             is_test_supporting_rule = True,
             requires_legacy_cc_toolchain = True,
         ),
-        rule_attrs.bundle_id_attrs(is_mandatory = False),
         rule_attrs.common_bundle_attrs(
             deps_cfg = transition_support.apple_platform_split_transition,
         ),
-        rule_attrs.common_tool_attrs,
+        rule_attrs.common_tool_attrs(),
         rule_attrs.device_family_attrs(
             allowed_families = rule_attrs.defaults.allowed_families.macos,
             is_mandatory = False,
@@ -197,10 +204,12 @@ _macos_internal_unit_test_bundle = rule_factory.create_apple_rule(
             add_environment_plist = True,
             platform_type = "macos",
         ),
-        rule_attrs.provisioning_profile_attrs(
+        rule_attrs.signing_attrs(
+            default_bundle_id_suffix = bundle_id_suffix_default.bundle_name,
+            supports_capabilities = False,
             profile_extension = ".provisionprofile",
         ),
-        rule_attrs.test_bundle_attrs,
+        rule_attrs.test_bundle_attrs(),
         rule_attrs.test_host_attrs(
             aspects = rule_attrs.aspects.test_host_aspects,
             providers = _MACOS_TEST_HOST_PROVIDERS,

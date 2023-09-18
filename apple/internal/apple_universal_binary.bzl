@@ -23,12 +23,12 @@ load(
     "rule_factory",
 )
 load(
-    "@build_bazel_rules_apple//apple:providers.bzl",
-    "AppleBinaryInfo",
-)
-load(
     "@build_bazel_rules_apple//apple/internal:linking_support.bzl",
     "linking_support",
+)
+load(
+    "@build_bazel_rules_apple//apple/internal:providers.bzl",
+    "new_applebinaryinfo",
 )
 load(
     "@build_bazel_rules_apple//apple/internal:transition_support.bzl",
@@ -55,14 +55,24 @@ def _apple_universal_binary_impl(ctx):
         xcode_config = ctx.attr._xcode_config[apple_common.XcodeVersionConfig],
     )
 
+    # The apple_universal_binary doesn't have its own `data` attribute, so there's no runfiles to
+    # collect from itself.
+    runfiles = ctx.runfiles()
+    transitive_runfiles = [
+        target[DefaultInfo].default_runfiles
+        for target in ctx.split_attr.binary.values()
+    ]
+    runfiles = runfiles.merge_all(transitive_runfiles)
+
     return [
-        AppleBinaryInfo(
+        new_applebinaryinfo(
             binary = fat_binary,
             infoplist = None,
         ),
         DefaultInfo(
             executable = fat_binary,
             files = depset([fat_binary]),
+            runfiles = runfiles,
         ),
     ]
 
@@ -74,7 +84,7 @@ The `lipo` tool is used to combine built binaries of multiple architectures.
 """,
     implementation = _apple_universal_binary_impl,
     attrs = [
-        rule_attrs.common_attrs,
+        rule_attrs.common_attrs(),
         rule_attrs.platform_attrs(),
         {
             "binary": attr.label(
@@ -89,7 +99,7 @@ The `lipo` tool is used to combine built binaries of multiple architectures.
 An optional list of target CPUs for which the universal binary should be built.
 
 If this attribute is present, the value of the platform-specific CPU flag
-(`--ios_multi_cpus`, `--macos_cpus`, `--tvos_cpus`, or `--watchos_cpus`) will be
+(`--ios_multi_cpus`, `--macos_cpus`, `--tvos_cpus`, `--visionos_cpus`, or `--watchos_cpus`) will be
 ignored and the binary will be built for all of the specified architectures
 instead.
 

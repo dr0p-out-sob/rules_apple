@@ -123,7 +123,8 @@ if [[ -n "${TEXT_TEST_FILE-}" ]]; then
         "contents of text file at \"$path\""
     fi
   done
-  for test_regexp in "${TEXT_FILE_NOT_CONTAINS[@]}"
+  text_file_not_contains=${TEXT_FILE_NOT_CONTAINS:-()}
+  for test_regexp in "${text_file_not_contains[@]}"
   do
     something_tested=true
     if grep -q "$test_regexp" "$path"
@@ -173,8 +174,9 @@ if [[ -n "${BINARY_TEST_FILE-}" ]]; then
     fi
 
     # Filter out undefined symbols from the objdump mach-o symbol output and
-    # return the rightmost value; these binary symbols will not have spaces.
-    IFS=$'\n' actual_symbols=($(objdump --syms --macho --arch="$arch" "$path" | grep -v "*UND*" | awk '{print substr($0,index($0,$5))}'))
+    # return the fifth from rightmost values, with the `.hidden` column stripped
+    # where applicable.
+    IFS=$'\n' actual_symbols=($(objdump --syms --macho --arch="$arch" "$path" | grep -v "*UND*" | awk '{print substr($0,index($0,$5))}' | sed 's/.hidden *//'))
     if [[ -n "${BINARY_CONTAINS_SYMBOLS-}" ]]; then
       for test_symbol in "${BINARY_CONTAINS_SYMBOLS[@]}"
       do

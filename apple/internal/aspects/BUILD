@@ -36,15 +36,16 @@ bzl_library(
     srcs = ["resource_aspect.bzl"],
     visibility = [
         "//apple/internal:__pkg__",
-        "//apple/internal/resource_rules:__pkg__",
         "//apple/internal/testing:__pkg__",
     ],
     deps = [
         "//apple:providers",
         "//apple/internal:apple_toolchains",
         "//apple/internal:platform_support",
+        "//apple/internal:providers",
         "//apple/internal:resources",
         "//apple/internal:swift_support",
+        "//apple/internal/providers:apple_debug_info",
         "//apple/internal/providers:framework_import_bundle_info",
         "@bazel_skylib//lib:dicts",
         "@bazel_skylib//lib:partial",
@@ -71,6 +72,18 @@ bzl_library(
         "//apple/internal:__pkg__",
     ],
     deps = [
+        "@build_bazel_rules_swift//swift",
+    ],
+)
+
+bzl_library(
+    name = "docc_archive_aspect",
+    srcs = ["docc_archive_aspect.bzl"],
+    visibility = [
+        "//apple/internal:__pkg__",
+    ],
+    deps = [
+        "//apple:providers",
         "@build_bazel_rules_swift//swift",
     ],
 )

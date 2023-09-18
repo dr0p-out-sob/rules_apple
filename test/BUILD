@@ -90,15 +90,6 @@ apple_shell_test(
 )
 
 apple_shell_test(
-    name = "apple_core_ml_library_test",
-    size = "medium",
-    src = "apple_core_ml_library_test.sh",
-    data = [
-        "//test/testdata/resources:mlmodel_srcs",
-    ],
-)
-
-apple_shell_test(
     name = "apple_intent_library_test",
     size = "medium",
     src = "apple_intent_library_test.sh",
@@ -221,7 +212,7 @@ apple_shell_test(
     size = "large",
     src = "ios_xctestrun_runner_unit_test.sh",
     args = [
-        "--ios_multi_cpus=i386,x86_64,sim_arm64",
+        "--ios_multi_cpus=sim_arm64,x86_64",
     ],
     tags = common.skip_ci_tags,
 )
@@ -231,7 +222,7 @@ apple_shell_test(
     size = "large",
     src = "ios_xctestrun_runner_ui_test.sh",
     args = [
-        "--ios_multi_cpus=i386,x86_64,sim_arm64",
+        "--ios_multi_cpus=sim_arm64,x86_64",
     ],
     tags = common.skip_ci_tags,
 )
@@ -252,7 +243,7 @@ apple_shell_test(
     size = "large",
     src = "ios_test_runner_unit_test_14.x.sh",
     args = [
-        "--ios_multi_cpus=i386,x86_64,sim_arm64",
+        "--ios_multi_cpus=sim_arm64,x86_64",
     ],
     tags = common.skip_ci_tags,
 )

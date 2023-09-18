@@ -443,9 +443,9 @@ apple_resource_bundle(
     name = "appResources",
     resources = select({
         "@build_bazel_rules_apple//apple:ios_x86_64": ["foo_sim.txt"],
-        "@build_bazel_rules_apple//apple:ios_i386": ["foo_sim.txt"],
-        "@build_bazel_rules_apple//apple:ios_armv7": ["foo_device.txt"],
         "@build_bazel_rules_apple//apple:ios_arm64": ["foo_device.txt"],
+        "@build_bazel_rules_apple//apple:ios_arm64e": ["foo_device.txt"],
+        "@build_bazel_rules_apple//apple:ios_sim_arm64": ["foo_sim.txt"],
     }),
 )
 EOF
@@ -466,69 +466,6 @@ EOF
     assert_zip_contains "test-bin/app/app.ipa" \
         "Payload/app.app/appResources.bundle/foo_sim.txt"
   fi
-}
-
-# Helper for empty segment build id failures.
-function verify_build_fails_bundle_id_empty_segment_with_param() {
-  bundle_id_to_test="$1"; shift
-
-  create_common_files
-
-  cat >> app/BUILD <<EOF
-ios_application(
-    name = "app",
-    bundle_id = "${bundle_id_to_test}",
-    families = ["iphone"],
-    infoplists = ["Info.plist"],
-    minimum_os_version = "${MIN_OS_IOS}",
-    provisioning_profile = "@build_bazel_rules_apple//test/testdata/provisioning:integration_testing_ios.mobileprovision",
-    deps = [":lib"],
-)
-EOF
-
-  ! do_build ios //app:app || fail "Should fail"
-  expect_log "Empty segment in bundle_id: \"${bundle_id_to_test}\""
-}
-
-# Test that invalid bundle ids fail a build.
-
-function test_build_fails_if_bundle_id_empty() {
-  verify_build_fails_bundle_id_empty_segment_with_param ""
-}
-
-function test_build_fails_if_bundle_id_just_dot() {
-  verify_build_fails_bundle_id_empty_segment_with_param "."
-}
-
-function test_build_fails_if_bundle_id_leading_dot() {
-  verify_build_fails_bundle_id_empty_segment_with_param ".my.bundle.id"
-}
-
-function test_build_fails_if_bundle_id_trailing_dot() {
-  verify_build_fails_bundle_id_empty_segment_with_param "my.bundle.id."
-}
-
-function test_build_fails_if_bundle_id_double_dot() {
-  verify_build_fails_bundle_id_empty_segment_with_param "my..bundle.id"
-}
-
-function test_build_fails_if_bundle_id_has_invalid_character() {
-  create_common_files
-
-  cat >> app/BUILD <<EOF
-ios_application(
-    name = "app",
-    bundle_id = "my#bundle",
-    families = ["iphone"],
-    infoplists = ["Info.plist"],
-    minimum_os_version = "${MIN_OS_IOS}",
-    provisioning_profile = "@build_bazel_rules_apple//test/testdata/provisioning:integration_testing_ios.mobileprovision",
-    deps = [":lib"],
-)
-EOF
-
-  ! do_build ios //app:app || fail "Should fail"
-  expect_log "Invalid character(s) in bundle_id: \"my#bundle\""
 }
 
 # Tests that the bundle name can be overridden to differ from the target name.
@@ -600,41 +537,6 @@ function test_tree_artifacts_and_disable_simulator_codesigning() {
   do_build ios //app:app \
       --define=apple.experimental.tree_artifact_outputs=yes \
       --features=apple.skip_codesign_simulator_bundles || fail "Should build"
-}
-
-# Tests tree artifacts of bundle targets(with same bundles names) don't conflict with each other.
-function test_tree_artifacts_with_same_bundle_names_dont_conflict() {
-  create_common_files
-  
-  cat >> app/BUILD <<EOF
-ios_application(
-    name = "app",
-    bundle_id = "my.bundle.id",
-    families = ["iphone"],
-    infoplists = ["Info.plist"],
-    bundle_name = "app",
-    minimum_os_version = "${MIN_OS_IOS}",
-    provisioning_profile = "@build_bazel_rules_apple//test/testdata/provisioning:integration_testing_ios.mobileprovision",
-    deps = [
-        ":lib",
-    ],
-)
-ios_application(
-    name = "app-beta",
-    bundle_id = "my.bundle.id",
-    families = ["iphone"],
-    infoplists = ["Info.plist"],
-    bundle_name = "app",
-    minimum_os_version = "${MIN_OS_IOS}",
-    provisioning_profile = "@build_bazel_rules_apple//test/testdata/provisioning:integration_testing_ios.mobileprovision",
-    deps = [
-        ":lib",
-    ],
-)
-EOF
-
-  do_build ios //app:app //app:app-beta \
-      --define=apple.experimental.tree_artifact_outputs=1 || fail "Should build"
 }
 
 run_suite "ios_application bundling tests"

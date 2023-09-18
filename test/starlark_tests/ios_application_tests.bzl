@@ -27,6 +27,10 @@ load(
     "apple_verification_test",
 )
 load(
+    "//test/starlark_tests/rules:analysis_failure_message_test.bzl",
+    "analysis_failure_message_test",
+)
+load(
     "//test/starlark_tests/rules:analysis_target_actions_test.bzl",
     "analysis_target_actions_tree_artifacts_outputs_test",
 )
@@ -49,8 +53,8 @@ load(
     "analysis_output_group_info_files_test",
 )
 load(
-    "//test/starlark_tests/rules:dsyms_test.bzl",
-    "dsyms_test",
+    "//test/starlark_tests/rules:apple_dsym_bundle_info_test.bzl",
+    "apple_dsym_bundle_info_test",
 )
 load(
     "//test/starlark_tests/rules:infoplist_contents_test.bzl",
@@ -63,10 +67,6 @@ load(
 load(
     "//test/starlark_tests/rules:linkmap_test.bzl",
     "linkmap_test",
-)
-load(
-    "//test/starlark_tests/rules:analysis_failure_message_test.bzl",
-    "analysis_failure_message_test",
 )
 
 def ios_application_test_suite(name):
@@ -84,7 +84,21 @@ def ios_application_test_suite(name):
     analysis_target_tree_artifacts_outputs_test(
         name = "{}_tree_artifact_outputs_test".format(name),
         target_under_test = "//test/starlark_tests/targets_under_test/ios:app_minimal",
-        expected_outputs = ["app_minimal_archive-root/Payload/app_minimal.app"],
+        expected_outputs = ["app_minimal.app"],
+        tags = [name],
+    )
+
+    analysis_target_tree_artifacts_outputs_test(
+        name = "{}_duplicate_bundle_target1_test".format(name),
+        target_under_test = "//test/starlark_tests/targets_under_test/ios:app_with_duplicate_bundle",
+        expected_outputs = ["app_with_duplicate_bundle.app"],
+        tags = [name],
+    )
+
+    analysis_target_tree_artifacts_outputs_test(
+        name = "{}_duplicate_bundle_target2_test".format(name),
+        target_under_test = "//test/starlark_tests/targets_under_test/ios:app_with_duplicate_bundle_beta",
+        expected_outputs = ["app_with_duplicate_bundle_beta_archive-root/Payload/app_with_duplicate_bundle.app"],
         tags = [name],
     )
 
@@ -441,29 +455,74 @@ def ios_application_test_suite(name):
         tags = [name],
     )
 
-    dsyms_test(
-        name = "{}_dsyms_test".format(name),
+    analysis_output_group_info_files_test(
+        name = "{}_dsyms_output_group_files_test".format(name),
         target_under_test = "//test/starlark_tests/targets_under_test/ios:app",
-        expected_direct_dsyms = ["app_dsyms/app.app"],
-        expected_transitive_dsyms = ["app_dsyms/app.app"],
+        output_group_name = "dsyms",
+        expected_outputs = [
+            "app.app.dSYM/Contents/Info.plist",
+            "app.app.dSYM/Contents/Resources/DWARF/app",
+        ],
+        tags = [name],
+    )
+    apple_dsym_bundle_info_test(
+        name = "{}_dsym_bundle_info_files_test".format(name),
+        target_under_test = "//test/starlark_tests/targets_under_test/ios:app",
+        expected_direct_dsyms = [
+            "dSYMs/app.app.dSYM",
+        ],
+        expected_transitive_dsyms = [
+            "dSYMs/app.app.dSYM",
+        ],
         tags = [name],
     )
 
-    dsyms_test(
+    analysis_output_group_info_files_test(
+        name = "{}_dsyms_output_group_transitive_files_test".format(name),
+        target_under_test = "//test/starlark_tests/targets_under_test/ios:app_with_ext_and_fmwk_provisioned",
+        output_group_name = "dsyms",
+        expected_outputs = [
+            "app_with_ext_and_fmwk_provisioned.app.dSYM/Contents/Info.plist",
+            "app_with_ext_and_fmwk_provisioned.app.dSYM/Contents/Resources/DWARF/app_with_ext_and_fmwk_provisioned",
+            "ext_with_fmwk_provisioned.appex.dSYM/Contents/Info.plist",
+            "ext_with_fmwk_provisioned.appex.dSYM/Contents/Resources/DWARF/ext_with_fmwk_provisioned",
+            "fmwk_with_provisioning.framework.dSYM/Contents/Info.plist",
+            "fmwk_with_provisioning.framework.dSYM/Contents/Resources/DWARF/fmwk_with_provisioning",
+        ],
+        tags = [name],
+    )
+    apple_dsym_bundle_info_test(
         name = "{}_transitive_dsyms_test".format(name),
         target_under_test = "//test/starlark_tests/targets_under_test/ios:app_with_ext_and_fmwk_provisioned",
-        expected_direct_dsyms = ["app_with_ext_and_fmwk_provisioned_dsyms/app_with_ext_and_fmwk_provisioned.app"],
-        expected_transitive_dsyms = ["app_with_ext_and_fmwk_provisioned_dsyms/app_with_ext_and_fmwk_provisioned.app", "ext_with_fmwk_provisioned_dsyms/ext_with_fmwk_provisioned.appex", "fmwk_with_provisioning_dsyms/fmwk_with_provisioning.framework"],
+        expected_direct_dsyms = [
+            "dSYMs/app_with_ext_and_fmwk_provisioned.app.dSYM",
+        ],
+        expected_transitive_dsyms = [
+            "dSYMs/fmwk_with_provisioning.framework.dSYM",
+            "dSYMs/ext_with_fmwk_provisioned.appex.dSYM",
+            "dSYMs/app_with_ext_and_fmwk_provisioned.app.dSYM",
+        ],
         tags = [name],
     )
 
-    dsyms_test(
+    apple_dsym_bundle_info_test(
         name = "{}_custom_executable_name_dsyms_test".format(name),
         target_under_test = "//test/starlark_tests/targets_under_test/ios:app_with_custom_executable_name",
-        expected_direct_dsyms = ["app_with_custom_executable_name_dsyms/custom_bundle_name.app"],
-        expected_transitive_dsyms = ["app_with_custom_executable_name_dsyms/custom_bundle_name.app"],
-        expected_binaries = [
+        expected_direct_dsyms = [
+            "dSYMs/app_with_custom_executable_name_dsyms/custom_bundle_name.app.dSYM",
+        ],
+        expected_transitive_dsyms = [
+            "dSYMs/app_with_custom_executable_name_dsyms/custom_bundle_name.app.dSYM",
+        ],
+        tags = [name],
+    )
+    analysis_output_group_info_files_test(
+        name = "{}_custom_executable_name_dsyms_files_test".format(name),
+        target_under_test = "//test/starlark_tests/targets_under_test/ios:app_with_custom_executable_name",
+        output_group_name = "dsyms",
+        expected_outputs = [
             "app_with_custom_executable_name_dsyms/custom_bundle_name.app.dSYM/Contents/Resources/DWARF/app.exe",
+            "app_with_custom_executable_name_dsyms/custom_bundle_name.app.dSYM/Contents/Info.plist",
         ],
         tags = [name],
     )
@@ -744,6 +803,174 @@ def ios_application_test_suite(name):
             ".*tvOSIntent.*",
             ".*watchOSIntent.*",
         ],
+        tags = [name],
+    )
+
+    # Test dSYM binaries and linkmaps from framework embedded via 'data' are propagated correctly
+    # at the top-level ios_application rule, and present through the 'dsysms' and 'linkmaps' output
+    # groups.
+    analysis_output_group_info_files_test(
+        name = "{}_with_runtime_framework_transitive_dsyms_output_group_info_test".format(name),
+        target_under_test = "//test/starlark_tests/targets_under_test/ios:app_with_fmwks_from_frameworks_and_objc_swift_libraries_using_data",
+        output_group_name = "dsyms",
+        expected_outputs = [
+            "app_with_fmwks_from_frameworks_and_objc_swift_libraries_using_data.app.dSYM/Contents/Info.plist",
+            "app_with_fmwks_from_frameworks_and_objc_swift_libraries_using_data.app.dSYM/Contents/Resources/DWARF/app_with_fmwks_from_frameworks_and_objc_swift_libraries_using_data",
+            # Frameworks
+            "fmwk.framework.dSYM/Contents/Info.plist",
+            "fmwk.framework.dSYM/Contents/Resources/DWARF/fmwk",
+            "fmwk_min_os_baseline_with_bundle.framework.dSYM/Contents/Info.plist",
+            "fmwk_min_os_baseline_with_bundle.framework.dSYM/Contents/Resources/DWARF/fmwk_min_os_baseline_with_bundle",
+            "fmwk_no_version.framework.dSYM/Contents/Info.plist",
+            "fmwk_no_version.framework.dSYM/Contents/Resources/DWARF/fmwk_no_version",
+            "fmwk_with_resources.framework.dSYM/Contents/Info.plist",
+            "fmwk_with_resources.framework.dSYM/Contents/Resources/DWARF/fmwk_with_resources",
+        ],
+        tags = [name],
+    )
+    analysis_output_group_info_files_test(
+        name = "{}_with_runtime_framework_transitive_linkmaps_output_group_info_test".format(name),
+        target_under_test = "//test/starlark_tests/targets_under_test/ios:app_with_fmwks_from_frameworks_and_objc_swift_libraries_using_data",
+        output_group_name = "linkmaps",
+        expected_outputs = [
+            "app_with_fmwks_from_frameworks_and_objc_swift_libraries_using_data_arm64.linkmap",
+            "app_with_fmwks_from_frameworks_and_objc_swift_libraries_using_data_x86_64.linkmap",
+            "fmwk_arm64.linkmap",
+            "fmwk_x86_64.linkmap",
+            "fmwk_min_os_baseline_with_bundle_arm64.linkmap",
+            "fmwk_min_os_baseline_with_bundle_x86_64.linkmap",
+            "fmwk_no_version_arm64.linkmap",
+            "fmwk_no_version_x86_64.linkmap",
+            "fmwk_with_resources_arm64.linkmap",
+            "fmwk_with_resources_x86_64.linkmap",
+        ],
+        tags = [name],
+    )
+
+    # Test transitive frameworks dSYM bundles are propagated by the AppleDsymBundleInfo provider.
+    apple_dsym_bundle_info_test(
+        name = "{}_with_runtime_framework_dsym_bundle_info_files_test".format(name),
+        target_under_test = "//test/starlark_tests/targets_under_test/ios:app_with_fmwks_from_frameworks_and_objc_swift_libraries_using_data",
+        expected_direct_dsyms = [
+            "dSYMs/app_with_fmwks_from_frameworks_and_objc_swift_libraries_using_data.app.dSYM",
+        ],
+        expected_transitive_dsyms = [
+            "dSYMs/app_with_fmwks_from_frameworks_and_objc_swift_libraries_using_data.app.dSYM",
+            "dSYMs/fmwk.framework.dSYM",
+            "dSYMs/fmwk_min_os_baseline_with_bundle.framework.dSYM",
+            "dSYMs/fmwk_no_version.framework.dSYM",
+            "dSYMs/fmwk_with_resources.framework.dSYM",
+        ],
+        tags = [name],
+    )
+
+    analysis_failure_message_test(
+        name = "{}_no_bundle_id_fail_test".format(name),
+        target_under_test = "//test/starlark_tests/targets_under_test/ios:app_with_no_bundle_id",
+        expected_error = """
+Error: There are no attributes set on this target that can be used to determine a bundle ID.
+
+Need a `bundle_id` or a reference to an `apple_base_bundle_id` target coming from the rule or (when
+applicable) exactly one of the `apple_capability_set` targets found within `shared_capabilities`.
+""",
+        tags = [name],
+    )
+
+    analysis_failure_message_test(
+        name = "{}_empty_bundle_id_fail_test".format(name),
+        target_under_test = "//test/starlark_tests/targets_under_test/ios:app_with_empty_bundle_id",
+        expected_error = """
+Error: There are no attributes set on this target that can be used to determine a bundle ID.
+
+Need a `bundle_id` or a reference to an `apple_base_bundle_id` target coming from the rule or (when
+applicable) exactly one of the `apple_capability_set` targets found within `shared_capabilities`.
+""",
+        tags = [name],
+    )
+
+    analysis_failure_message_test(
+        name = "{}_just_dot_bundle_id_fail_test".format(name),
+        target_under_test = "//test/starlark_tests/targets_under_test/ios:app_with_just_dot_bundle_id",
+        expected_error = "Empty segment in bundle_id: \".\"",
+        tags = [name],
+    )
+
+    analysis_failure_message_test(
+        name = "{}_leading_dot_bundle_id_fail_test".format(name),
+        target_under_test = "//test/starlark_tests/targets_under_test/ios:app_with_leading_dot_bundle_id",
+        expected_error = "Empty segment in bundle_id: \".my.bundle.id\"",
+        tags = [name],
+    )
+
+    analysis_failure_message_test(
+        name = "{}_trailing_dot_bundle_id_fail_test".format(name),
+        target_under_test = "//test/starlark_tests/targets_under_test/ios:app_with_trailing_dot_bundle_id",
+        expected_error = "Empty segment in bundle_id: \"my.bundle.id.\"",
+        tags = [name],
+    )
+
+    analysis_failure_message_test(
+        name = "{}_double_dot_bundle_id_fail_test".format(name),
+        target_under_test = "//test/starlark_tests/targets_under_test/ios:app_with_double_dot_bundle_id",
+        expected_error = "Empty segment in bundle_id: \"my..bundle.id\"",
+        tags = [name],
+    )
+
+    analysis_failure_message_test(
+        name = "{}_invalid_character_bundle_id_fail_test".format(name),
+        target_under_test = "//test/starlark_tests/targets_under_test/ios:app_with_invalid_character_bundle_id",
+        expected_error = "Invalid character(s) in bundle_id: \"my#bundle\"",
+        tags = [name],
+    )
+
+    infoplist_contents_test(
+        name = "{}_capability_set_derived_bundle_id_plist_test".format(name),
+        target_under_test = "//test/starlark_tests/targets_under_test/ios:app_with_capability_set_derived_bundle_id",
+        expected_values = {
+            "CFBundleIdentifier": "com.bazel.app.example",
+        },
+        tags = [name],
+    )
+
+    infoplist_contents_test(
+        name = "{}_custom_bundle_id_derived_bundle_id_plist_test".format(name),
+        target_under_test = "//test/starlark_tests/targets_under_test/ios:app_with_custom_bundle_id_suffix_derived_bundle_id",
+        expected_values = {
+            "CFBundleIdentifier": "com.bazel.app.example.bundle-id-suffix",
+        },
+        tags = [name],
+    )
+
+    analysis_failure_message_test(
+        name = "{}_ambiguous_shared_capabilities_bundle_id_fail_test".format(name),
+        target_under_test = "//test/starlark_tests/targets_under_test/ios:app_with_ambiguous_shared_capabilities_bundle_id",
+        expected_error = """
+Error: Found a `bundle_id` on the rule along with `shared_capabilities` defining a `base_bundle_id`.
+
+This is ambiguous. Please remove the `bundle_id` from your rule definition, or reference
+`shared_capabilities` without a `base_bundle_id`.
+""",
+        tags = [name],
+    )
+
+    analysis_failure_message_test(
+        name = "{}_absent_shared_capabilities_bundle_id_fail_test".format(name),
+        target_under_test = "//test/starlark_tests/targets_under_test/ios:app_with_absent_shared_capabilities_bundle_id",
+        expected_error = """
+Error: Expected to find a base_bundle_id from exactly one of the assigned shared_capabilities.
+Found none.
+""",
+        tags = [name],
+    )
+
+    analysis_failure_message_test(
+        name = "{}_conflicting_shared_capabilities_bundle_id_fail_test".format(name),
+        target_under_test = "//test/starlark_tests/targets_under_test/ios:app_with_conflicting_shared_capabilities_bundle_id",
+        expected_error = """
+Error: Received conflicting base bundle IDs from more than one assigned Apple shared capability.
+
+Found "com.bazel.app.example" which does not match previously defined "com.altbazel.app.example".
+""",
         tags = [name],
     )
 

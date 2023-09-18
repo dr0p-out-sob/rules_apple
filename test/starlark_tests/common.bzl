@@ -56,11 +56,17 @@ _min_os_tvos = struct(
     stable_swift_abi = "12.2",
 )
 
+_min_os_visionos = struct(
+    baseline = "1.0",
+    oldest_supported = "1.0",
+)
+
 _min_os_watchos = struct(
     app_intents_support = "9.0",
     arm64_support = "9.0",
     arm_sim_support = "7.0",
     baseline = "4.0",
+    requires_single_target_app = "9.0",
     single_target_app = "7.0",
     stable_swift_abi = "6.0",
     test_runner_support = "7.4",
@@ -71,6 +77,7 @@ common = struct(
     min_os_ios = _min_os_ios,
     min_os_macos = _min_os_macos,
     min_os_tvos = _min_os_tvos,
+    min_os_visionos = _min_os_visionos,
     min_os_watchos = _min_os_watchos,
     skip_ci_tags = _skip_ci_tags,
 )

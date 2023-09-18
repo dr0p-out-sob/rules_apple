@@ -23,8 +23,20 @@ load(
     "analysis_failure_message_with_tree_artifact_outputs_test",
 )
 load(
+    "//test/starlark_tests/rules:analysis_output_group_info_files_test.bzl",
+    "analysis_output_group_info_files_test",
+)
+load(
+    "//test/starlark_tests/rules:analysis_runfiles_test.bzl",
+    "analysis_runfiles_dsym_test",
+)
+load(
     "//test/starlark_tests/rules:analysis_target_actions_test.bzl",
     "analysis_target_actions_test",
+)
+load(
+    "//test/starlark_tests/rules:apple_dsym_bundle_info_test.bzl",
+    "apple_dsym_bundle_info_test",
 )
 load(
     "//test/starlark_tests/rules:apple_verification_test.bzl",
@@ -34,10 +46,6 @@ load(
     "//test/starlark_tests/rules:common_verification_tests.bzl",
     "apple_symbols_file_test",
     "archive_contents_test",
-)
-load(
-    "//test/starlark_tests/rules:dsyms_test.bzl",
-    "dsyms_test",
 )
 load(
     "//test/starlark_tests/rules:infoplist_contents_test.bzl",
@@ -257,11 +265,35 @@ def macos_application_test_suite(name):
         tags = [name],
     )
 
-    dsyms_test(
-        name = "{}_dsyms_test".format(name),
+    analysis_output_group_info_files_test(
+        name = "{}_dsyms_output_group_files_test".format(name),
         target_under_test = "//test/starlark_tests/targets_under_test/macos:app",
-        expected_direct_dsyms = ["app_dsyms/app.app"],
-        expected_transitive_dsyms = ["app_dsyms/app.app"],
+        output_group_name = "dsyms",
+        expected_outputs = [
+            "app.app.dSYM/Contents/Info.plist",
+            "app.app.dSYM/Contents/Resources/DWARF/app",
+        ],
+        tags = [name],
+    )
+    apple_dsym_bundle_info_test(
+        name = "{}_dsym_bundle_info_files_test".format(name),
+        target_under_test = "//test/starlark_tests/targets_under_test/macos:app",
+        expected_direct_dsyms = [
+            "dSYMs/app.app.dSYM",
+        ],
+        expected_transitive_dsyms = [
+            "dSYMs/app.app.dSYM",
+        ],
+        tags = [name],
+    )
+
+    analysis_runfiles_dsym_test(
+        name = "{}_runfiles_dsym_test".format(name),
+        target_under_test = "//test/starlark_tests/targets_under_test/macos:app",
+        expected_runfiles = [
+            "test/starlark_tests/targets_under_test/macos/app.app.dSYM/Contents/Resources/DWARF/app",
+            "test/starlark_tests/targets_under_test/macos/app.app.dSYM/Contents/Info.plist",
+        ],
         tags = [name],
     )
 
@@ -354,6 +386,15 @@ def macos_application_test_suite(name):
             "$RESOURCE_ROOT/Metadata.appintents/extract.actionsdata",
             "$RESOURCE_ROOT/Metadata.appintents/version.json",
         ],
+        tags = [name],
+    )
+
+    infoplist_contents_test(
+        name = "{}_capability_set_derived_bundle_id_plist_test".format(name),
+        target_under_test = "//test/starlark_tests/targets_under_test/macos:app_with_capability_set_derived_bundle_id",
+        expected_values = {
+            "CFBundleIdentifier": "com.bazel.app.example",
+        },
         tags = [name],
     )
 

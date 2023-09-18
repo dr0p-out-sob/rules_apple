@@ -213,9 +213,6 @@ def _apple_dynamic_framework_import_impl(ctx):
     framework_imports = ctx.files.framework_imports
     label = ctx.label
 
-    # TODO(b/207475773): Remove grep-includes once it's no longer required for cc_common APIs.
-    grep_includes = ctx.file._grep_includes
-
     # TODO(b/258492867): Add tree artifacts support when Bazel can handle remote actions with
     # symlinks. See https://github.com/bazelbuild/bazel/issues/16361.
     target_triplet = cc_toolchain_info_support.get_apple_clang_triplet(cc_toolchain)
@@ -280,7 +277,6 @@ def _apple_dynamic_framework_import_impl(ctx):
         disabled_features = disabled_features,
         features = features,
         framework_includes = _framework_search_paths(framework.header_imports),
-        grep_includes = grep_includes,
         header_imports = framework.header_imports,
         kind = "dynamic",
         label = label,
@@ -299,9 +295,9 @@ def _apple_dynamic_framework_import_impl(ctx):
         framework_files = depset(framework_imports),
     ))
 
-    if framework.swift_interface_imports:
+    if "apple._import_framework_via_swiftinterface" in features and framework.swift_interface_imports:
         # Create SwiftInfo provider
-        swift_toolchain = swift_common.get_toolchain(ctx, "_swift_toolchain")
+        swift_toolchain = ctx.attr._swift_toolchain[SwiftToolchainInfo]
         swiftinterface_files = framework_import_support.get_swift_module_files_with_target_triplet(
             swift_module_files = framework.swift_interface_imports,
             target_triplet = target_triplet,
@@ -345,9 +341,6 @@ def _apple_static_framework_import_impl(ctx):
     sdk_dylibs = ctx.attr.sdk_dylibs
     sdk_frameworks = ctx.attr.sdk_frameworks
     weak_sdk_frameworks = ctx.attr.weak_sdk_frameworks
-
-    # TODO(b/207475773): Remove grep-includes once it's no longer required for cc_common APIs.
-    grep_includes = ctx.file._grep_includes
 
     providers = [
         DefaultInfo(runfiles = ctx.runfiles(files = ctx.files.data)),
@@ -436,7 +429,6 @@ def _apple_static_framework_import_impl(ctx):
             framework_includes = _framework_search_paths(
                 framework.header_imports,
             ),
-            grep_includes = grep_includes,
             header_imports = framework.header_imports,
             kind = "static",
             label = label,
@@ -446,7 +438,7 @@ def _apple_static_framework_import_impl(ctx):
         ),
     )
 
-    if framework.swift_interface_imports:
+    if "apple._import_framework_via_swiftinterface" in features and framework.swift_interface_imports:
         # Create SwiftInfo provider
         swift_toolchain = ctx.attr._swift_toolchain[SwiftToolchainInfo]
         swiftinterface_files = framework_import_support.get_swift_module_files_with_target_triplet(
@@ -486,7 +478,7 @@ apple_dynamic_framework_import = rule(
     implementation = _apple_dynamic_framework_import_impl,
     fragments = ["cpp"],
     attrs = dicts.add(
-        rule_attrs.common_tool_attrs,
+        rule_attrs.common_tool_attrs(),
         swift_common.toolchain_attrs(toolchain_attr_name = "_swift_toolchain"),
         {
             "framework_imports": attr.label_list(
@@ -556,7 +548,7 @@ apple_static_framework_import = rule(
     implementation = _apple_static_framework_import_impl,
     fragments = ["cpp", "objc"],
     attrs = dicts.add(
-        rule_attrs.common_tool_attrs,
+        rule_attrs.common_tool_attrs(),
         swift_common.toolchain_attrs(toolchain_attr_name = "_swift_toolchain"),
         {
             "framework_imports": attr.label_list(
@@ -578,7 +570,7 @@ When linking a binary, all libraries named in that binary's transitive dependenc
             "sdk_frameworks": attr.string_list(
                 doc = """
 Names of SDK frameworks to link with (e.g. `AddressBook`, `QuartzCore`). `UIKit` and `Foundation`
-are always included when building for the iOS, tvOS and watchOS platforms. For macOS, only
+are always included when building for the iOS, tvOS, visionOS, and watchOS platforms. For macOS, only
 `Foundation` is always included. When linking a top level binary, all SDK frameworks listed in that
 binary's transitive dependency graph are linked.
 """,
@@ -634,6 +626,7 @@ not include Swift interface or Swift module files.
             ),
         },
     ),
+    toolchains = use_cpp_toolchain(),
     doc = """
 This rule encapsulates an already-built static framework. It is defined by a list of
 files in exactly one `.framework` directory. `apple_static_framework_import` targets

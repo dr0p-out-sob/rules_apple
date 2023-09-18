@@ -60,6 +60,11 @@ load(
     "processor",
 )
 load(
+    "@build_bazel_rules_apple//apple/internal:providers.bzl",
+    "new_appleextraoutputsinfo",
+    "new_appletestinfo",
+)
+load(
     "@build_bazel_rules_apple//apple/internal:resources.bzl",
     "resources",
 )
@@ -78,7 +83,6 @@ load(
 load(
     "@build_bazel_rules_apple//apple:providers.bzl",
     "AppleBundleInfo",
-    "AppleExtraOutputsInfo",
     "AppleTestInfo",
 )
 load(
@@ -177,7 +181,7 @@ def _apple_test_info_aspect_impl(target, ctx):
     non_arc_sources = _collect_files(ctx.rule.attr, ["non_arc_srcs"])
     sources = _collect_files(ctx.rule.attr, ["srcs", "hdrs", "textual_hdrs"])
 
-    return [AppleTestInfo(
+    return [new_appletestinfo(
         includes = depset(transitive = includes),
         module_maps = depset(transitive = module_maps),
         non_arc_sources = non_arc_sources,
@@ -233,7 +237,7 @@ def _apple_test_info_provider(deps, test_bundle, test_host):
         if len(module_names) == 1:
             module_name = module_names[0]
 
-    return AppleTestInfo(
+    return new_appletestinfo(
         deps = depset(dep_labels),
         includes = depset(transitive = transitive_includes),
         module_maps = depset(transitive = transitive_module_maps),
@@ -247,6 +251,7 @@ def _apple_test_info_provider(deps, test_bundle, test_host):
 
 def _computed_test_bundle_id(test_host_bundle_id):
     """Compute a test bundle ID from the test host, or a default if not given."""
+
     if test_host_bundle_id:
         bundle_id = test_host_bundle_id + "Tests"
     else:
@@ -265,8 +270,24 @@ def _apple_test_bundle_impl(*, ctx, product_type):
     """Implementation for bundling XCTest bundles."""
     test_host = ctx.attr.test_host
     test_host_bundle_id = _test_host_bundle_id(test_host)
-    if ctx.attr.bundle_id:
-        bundle_id = ctx.attr.bundle_id
+
+    rule_descriptor = rule_support.rule_descriptor(
+        platform_type = ctx.attr.platform_type,
+        product_type = product_type,
+    )
+    bundle_name, bundle_extension = bundling_support.bundle_full_name(
+        custom_bundle_name = ctx.attr.bundle_name,
+        label_name = ctx.label.name,
+        rule_descriptor = rule_descriptor,
+    )
+    if ctx.attr.base_bundle_id or ctx.attr.bundle_id:
+        bundle_id = bundling_support.bundle_full_id(
+            base_bundle_id = ctx.attr.base_bundle_id,
+            bundle_id = ctx.attr.bundle_id,
+            bundle_id_suffix = ctx.attr.bundle_id_suffix,
+            bundle_name = bundle_name,
+            suffix_default = ctx.attr._bundle_id_suffix_default,
+        )
     else:
         bundle_id = _computed_test_bundle_id(test_host_bundle_id)
 
@@ -275,19 +296,9 @@ def _apple_test_bundle_impl(*, ctx, product_type):
              "same as the test host's bundle identifier. Please change one of " +
              "them.")
 
-    rule_descriptor = rule_support.rule_descriptor(
-        platform_type = ctx.attr.platform_type,
-        product_type = product_type,
-    )
-
     actions = ctx.actions
     apple_mac_toolchain_info = ctx.attr._mac_toolchain[AppleMacToolsToolchainInfo]
     apple_xplat_toolchain_info = ctx.attr._xplat_toolchain[AppleXPlatToolsToolchainInfo]
-    bundle_name, bundle_extension = bundling_support.bundle_full_name(
-        custom_bundle_name = ctx.attr.bundle_name,
-        label_name = ctx.label.name,
-        rule_descriptor = rule_descriptor,
-    )
     executable_name = ctx.attr.executable_name
     features = features_support.compute_enabled_features(
         requested_features = ctx.features,
@@ -328,7 +339,8 @@ def _apple_test_bundle_impl(*, ctx, product_type):
     # is never passed as the bundle loader, because the host application is loaded out-of-process.)
     if (
         rule_descriptor.product_type == apple_product_type.unit_test_bundle and
-        test_host and apple_common.AppleExecutableBinary in test_host
+        test_host and apple_common.AppleExecutableBinary in test_host and
+        ctx.attr.test_host_is_bundle_loader
     ):
         bundle_loader = test_host
     else:
@@ -429,6 +441,9 @@ def _apple_test_bundle_impl(*, ctx, product_type):
             label_name = label.name,
             linkmaps = debug_outputs.linkmaps,
             platform_prerequisites = platform_prerequisites,
+            resolved_plisttool = apple_mac_toolchain_info.resolved_plisttool,
+            rule_label = label,
+            version = ctx.attr.version,
         ),
         partials.embedded_bundles_partial(
             bundle_embedded_bundles = True,
@@ -511,6 +526,8 @@ def _apple_test_bundle_impl(*, ctx, product_type):
         rule_descriptor = rule_descriptor,
     )
 
+    dsyms = outputs.dsyms(processor_result = processor_result)
+
     # The processor outputs has all the extra outputs like dSYM files that we want to propagate, but
     # it also includes the archive artifact. This collects all the files that should be output from
     # the rule (except the archive) so that they're propagated and can be returned by the test
@@ -550,8 +567,13 @@ def _apple_test_bundle_impl(*, ctx, product_type):
             ctx,
             dependency_attributes = ["deps", "test_host"],
         ),
-        AppleExtraOutputsInfo(files = depset(filtered_outputs)),
-        DefaultInfo(files = output_files),
+        new_appleextraoutputsinfo(files = depset(filtered_outputs)),
+        DefaultInfo(
+            files = output_files,
+            runfiles = ctx.runfiles(
+                transitive_files = dsyms,
+            ),
+        ),
         OutputGroupInfo(
             **outputs.merge_output_groups(
                 link_result.output_groups,

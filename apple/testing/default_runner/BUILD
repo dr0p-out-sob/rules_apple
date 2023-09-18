@@ -15,6 +15,10 @@ load(
     "tvos_test_runner",
 )
 load(
+    "//apple/testing/default_runner:visionos_test_runner.bzl",
+    "visionos_test_runner",
+)
+load(
     "//apple/testing/default_runner:watchos_test_runner.bzl",
     "watchos_test_runner",
 )
@@ -26,7 +30,7 @@ bzl_library(
     name = "ios_test_runner",
     srcs = ["ios_test_runner.bzl"],
     deps = [
-        "//apple/testing:apple_test_rules",
+        "//apple:providers",
     ],
 )
 
@@ -34,7 +38,7 @@ bzl_library(
     name = "macos_test_runner",
     srcs = ["macos_test_runner.bzl"],
     deps = [
-        "//apple/testing:apple_test_rules",
+        "//apple:providers",
         "@build_bazel_apple_support//lib:xcode_support",
     ],
 )
@@ -43,7 +47,15 @@ bzl_library(
     name = "tvos_test_runner",
     srcs = ["tvos_test_runner.bzl"],
     deps = [
-        "//apple/testing:apple_test_rules",
+        "//apple:providers",
+    ],
+)
+
+bzl_library(
+    name = "visionos_test_runner",
+    srcs = ["visionos_test_runner.bzl"],
+    deps = [
+        "//apple:providers",
     ],
 )
 
@@ -51,7 +63,7 @@ bzl_library(
     name = "watchos_test_runner",
     srcs = ["watchos_test_runner.bzl"],
     deps = [
-        "//apple/testing:apple_test_rules",
+        "//apple:providers",
     ],
 )
 
@@ -62,6 +74,7 @@ exports_files([
     "macos_test_runner.template.sh",
     "macos_test_runner.template.xctestrun",
     "tvos_test_runner.template.sh",
+    "visionos_test_runner.template.sh",
     "watchos_test_runner.template.sh",
     "xctrunner_entitlements.template.plist",
 ])
@@ -107,6 +120,14 @@ macos_test_runner(
 
 tvos_test_runner(
     name = "tvos_default_runner",
+    # Used by the rule implementations, so it needs to be public; but
+    # should be considered an implementation detail of the rules and
+    # not used by other things.
+    visibility = ["//visibility:public"],
+)
+
+visionos_test_runner(
+    name = "visionos_default_runner",
     # Used by the rule implementations, so it needs to be public; but
     # should be considered an implementation detail of the rules and
     # not used by other things.

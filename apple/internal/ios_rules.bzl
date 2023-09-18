@@ -37,6 +37,7 @@ load(
 )
 load(
     "@build_bazel_rules_apple//apple/internal:bundling_support.bzl",
+    "bundle_id_suffix_default",
     "bundling_support",
 )
 load(
@@ -74,6 +75,17 @@ load(
 load(
     "@build_bazel_rules_apple//apple/internal:processor.bzl",
     "processor",
+)
+load(
+    "@build_bazel_rules_apple//apple/internal:providers.bzl",
+    "new_appleframeworkbundleinfo",
+    "new_iosappclipbundleinfo",
+    "new_iosapplicationbundleinfo",
+    "new_iosextensionbundleinfo",
+    "new_iosframeworkbundleinfo",
+    "new_iosimessageapplicationbundleinfo",
+    "new_iosimessageextensionbundleinfo",
+    "new_iosstaticframeworkbundleinfo",
 )
 load(
     "@build_bazel_rules_apple//apple/internal:resources.bzl",
@@ -119,15 +131,11 @@ load(
 load(
     "@build_bazel_rules_apple//apple:providers.bzl",
     "AppleBundleInfo",
-    "AppleFrameworkBundleInfo",
     "ApplePlatformInfo",
     "IosAppClipBundleInfo",
-    "IosApplicationBundleInfo",
     "IosExtensionBundleInfo",
     "IosFrameworkBundleInfo",
-    "IosImessageApplicationBundleInfo",
     "IosImessageExtensionBundleInfo",
-    "IosStaticFrameworkBundleInfo",
     "IosStickerPackExtensionBundleInfo",
     "WatchosApplicationBundleInfo",
 )
@@ -145,13 +153,19 @@ def _ios_application_impl(ctx):
     actions = ctx.actions
     apple_mac_toolchain_info = ctx.attr._mac_toolchain[AppleMacToolsToolchainInfo]
     apple_xplat_toolchain_info = ctx.attr._xplat_toolchain[AppleXPlatToolsToolchainInfo]
-    bundle_id = ctx.attr.bundle_id
+
     bundle_name, bundle_extension = bundling_support.bundle_full_name(
         custom_bundle_name = ctx.attr.bundle_name,
         label_name = ctx.label.name,
         rule_descriptor = rule_descriptor,
     )
-    executable_name = ctx.attr.executable_name
+    bundle_id = bundling_support.bundle_full_id(
+        bundle_id = ctx.attr.bundle_id,
+        bundle_id_suffix = ctx.attr.bundle_id_suffix,
+        bundle_name = bundle_name,
+        suffix_default = ctx.attr._bundle_id_suffix_default,
+        shared_capabilities = ctx.attr.shared_capabilities,
+    )
     bundle_verification_targets = [struct(target = ext) for ext in ctx.attr.extensions]
     cc_toolchain_forwarder = ctx.split_attr._cc_toolchain_forwarder
     embeddable_targets = (
@@ -160,6 +174,7 @@ def _ios_application_impl(ctx):
         ctx.attr.app_clips +
         ctx.attr.deps
     )
+    executable_name = ctx.attr.executable_name
     features = features_support.compute_enabled_features(
         requested_features = ctx.features,
         unsupported_features = ctx.disabled_features,
@@ -255,7 +270,6 @@ def _ios_application_impl(ctx):
             deps = ctx.split_attr.app_intents,
             disabled_features = ctx.disabled_features,
             features = features,
-            grep_includes = ctx.file._grep_includes,
             label = label,
             platform_prerequisites = platform_prerequisites,
         ),
@@ -306,13 +320,16 @@ def _ios_application_impl(ctx):
             actions = actions,
             bundle_extension = bundle_extension,
             bundle_name = bundle_name,
-            debug_dependencies = embeddable_targets,
+            debug_dependencies = embeddable_targets + ctx.attr.deps,
             dsym_binaries = debug_outputs.dsym_binaries,
             dsym_info_plist_template = apple_mac_toolchain_info.dsym_info_plist_template,
             executable_name = executable_name,
             label_name = label.name,
             linkmaps = debug_outputs.linkmaps,
             platform_prerequisites = platform_prerequisites,
+            resolved_plisttool = apple_mac_toolchain_info.resolved_plisttool,
+            rule_label = label,
+            version = ctx.attr.version,
         ),
         partials.embedded_bundles_partial(
             bundle_embedded_bundles = True,
@@ -457,6 +474,8 @@ def _ios_application_impl(ctx):
         rule_descriptor = rule_descriptor,
     )
 
+    dsyms = outputs.dsyms(processor_result = processor_result)
+
     return [
         # TODO(b/121155041): Should we do the same for ios_framework and ios_extension?
         coverage_common.instrumented_files_info(ctx, dependency_attributes = ["deps"]),
@@ -465,9 +484,10 @@ def _ios_application_impl(ctx):
             files = processor_result.output_files,
             runfiles = ctx.runfiles(
                 files = [archive],
+                transitive_files = dsyms,
             ),
         ),
-        IosApplicationBundleInfo(),
+        new_iosapplicationbundleinfo(),
         OutputGroupInfo(
             **outputs.merge_output_groups(
                 link_result.output_groups,
@@ -493,11 +513,18 @@ def _ios_app_clip_impl(ctx):
     actions = ctx.actions
     apple_mac_toolchain_info = ctx.attr._mac_toolchain[AppleMacToolsToolchainInfo]
     apple_xplat_toolchain_info = ctx.attr._xplat_toolchain[AppleXPlatToolsToolchainInfo]
-    bundle_id = ctx.attr.bundle_id
     bundle_name, bundle_extension = bundling_support.bundle_full_name(
         custom_bundle_name = ctx.attr.bundle_name,
         label_name = ctx.label.name,
         rule_descriptor = rule_descriptor,
+    )
+
+    bundle_id = bundling_support.bundle_full_id(
+        bundle_id = ctx.attr.bundle_id,
+        bundle_id_suffix = ctx.attr.bundle_id_suffix,
+        bundle_name = bundle_name,
+        suffix_default = ctx.attr._bundle_id_suffix_default,
+        shared_capabilities = ctx.attr.shared_capabilities,
     )
     embeddable_targets = ctx.attr.frameworks
     executable_name = ctx.attr.executable_name
@@ -625,13 +652,16 @@ def _ios_app_clip_impl(ctx):
             actions = actions,
             bundle_extension = bundle_extension,
             bundle_name = bundle_name,
-            debug_dependencies = embeddable_targets,
+            debug_dependencies = embeddable_targets + ctx.attr.deps,
             dsym_binaries = debug_outputs.dsym_binaries,
             dsym_info_plist_template = apple_mac_toolchain_info.dsym_info_plist_template,
             executable_name = executable_name,
             label_name = label.name,
             linkmaps = debug_outputs.linkmaps,
             platform_prerequisites = platform_prerequisites,
+            resolved_plisttool = apple_mac_toolchain_info.resolved_plisttool,
+            rule_label = label,
+            version = ctx.attr.version,
         ),
         partials.embedded_bundles_partial(
             app_clips = [archive_for_embedding],
@@ -748,7 +778,7 @@ def _ios_app_clip_impl(ctx):
                 files = [archive],
             ),
         ),
-        IosAppClipBundleInfo(),
+        new_iosappclipbundleinfo(),
         OutputGroupInfo(
             **outputs.merge_output_groups(
                 link_result.output_groups,
@@ -775,13 +805,18 @@ def _ios_framework_impl(ctx):
     apple_mac_toolchain_info = ctx.attr._mac_toolchain[AppleMacToolsToolchainInfo]
     apple_xplat_toolchain_info = ctx.attr._xplat_toolchain[AppleXPlatToolsToolchainInfo]
     bin_root_path = ctx.bin_dir.path
-    bundle_id = ctx.attr.bundle_id
     bundle_name, bundle_extension = bundling_support.bundle_full_name(
         custom_bundle_name = ctx.attr.bundle_name,
         label_name = ctx.label.name,
         rule_descriptor = rule_descriptor,
     )
-    executable_name = ctx.attr.executable_name
+    bundle_id = bundling_support.bundle_full_id(
+        base_bundle_id = ctx.attr.base_bundle_id,
+        bundle_id = ctx.attr.bundle_id,
+        bundle_id_suffix = ctx.attr.bundle_id_suffix,
+        bundle_name = bundle_name,
+        suffix_default = ctx.attr._bundle_id_suffix_default,
+    )
     cc_toolchain = find_cpp_toolchain(ctx)
     cc_features = cc_common.configure_features(
         ctx = ctx,
@@ -790,6 +825,7 @@ def _ios_framework_impl(ctx):
         requested_features = ctx.features,
         unsupported_features = ctx.disabled_features,
     )
+    executable_name = ctx.attr.executable_name
     features = features_support.compute_enabled_features(
         requested_features = ctx.features,
         unsupported_features = ctx.disabled_features,
@@ -911,13 +947,16 @@ def _ios_framework_impl(ctx):
             actions = actions,
             bundle_extension = bundle_extension,
             bundle_name = bundle_name,
-            debug_dependencies = ctx.attr.frameworks,
+            debug_dependencies = ctx.attr.frameworks + ctx.attr.deps,
             dsym_binaries = debug_outputs.dsym_binaries,
             dsym_info_plist_template = apple_mac_toolchain_info.dsym_info_plist_template,
             executable_name = executable_name,
             label_name = label.name,
             linkmaps = debug_outputs.linkmaps,
             platform_prerequisites = platform_prerequisites,
+            resolved_plisttool = apple_mac_toolchain_info.resolved_plisttool,
+            rule_label = label,
+            version = ctx.attr.version,
         ),
         partials.embedded_bundles_partial(
             frameworks = [archive_for_embedding],
@@ -1002,8 +1041,8 @@ def _ios_framework_impl(ctx):
 
     return [
         DefaultInfo(files = processor_result.output_files),
-        AppleFrameworkBundleInfo(),
-        IosFrameworkBundleInfo(),
+        new_appleframeworkbundleinfo(),
+        new_iosframeworkbundleinfo(),
         OutputGroupInfo(
             **outputs.merge_output_groups(
                 link_result.output_groups,
@@ -1015,27 +1054,39 @@ def _ios_framework_impl(ctx):
     ] + processor_result.providers
 
 def _ios_extension_impl(ctx):
-    """Experimental implementation of ios_extension."""
+    """Implementation of ios_extension."""
+
+    product_type = apple_product_type.app_extension
+    if ctx.attr.extensionkit_extension:
+        product_type = apple_product_type.extensionkit_extension
+
     rule_descriptor = rule_support.rule_descriptor(
         platform_type = ctx.attr.platform_type,
-        product_type = apple_product_type.app_extension,
+        product_type = product_type,
     )
 
     actions = ctx.actions
     apple_mac_toolchain_info = ctx.attr._mac_toolchain[AppleMacToolsToolchainInfo]
     apple_xplat_toolchain_info = ctx.attr._xplat_toolchain[AppleXPlatToolsToolchainInfo]
-    bundle_id = ctx.attr.bundle_id
     bundle_name, bundle_extension = bundling_support.bundle_full_name(
         custom_bundle_name = ctx.attr.bundle_name,
         label_name = ctx.label.name,
         rule_descriptor = rule_descriptor,
     )
-    executable_name = ctx.attr.executable_name
+    bundle_id = bundling_support.bundle_full_id(
+        bundle_id = ctx.attr.bundle_id,
+        bundle_id_suffix = ctx.attr.bundle_id_suffix,
+        bundle_name = bundle_name,
+        suffix_default = ctx.attr._bundle_id_suffix_default,
+        shared_capabilities = ctx.attr.shared_capabilities,
+    )
     features = features_support.compute_enabled_features(
         requested_features = ctx.features,
         unsupported_features = ctx.disabled_features,
     )
+    executable_name = ctx.attr.executable_name
     label = ctx.label
+
     platform_prerequisites = platform_support.platform_prerequisites(
         apple_fragment = ctx.fragments.apple,
         build_settings = apple_xplat_toolchain_info.build_settings,
@@ -1110,6 +1161,14 @@ def _ios_extension_impl(ctx):
         predeclared_outputs = predeclared_outputs,
     )
 
+    embedded_bundles_args = {}
+    if rule_descriptor.product_type == apple_product_type.app_extension:
+        embedded_bundles_args["plugins"] = [archive_for_embedding]
+    elif rule_descriptor.product_type == apple_product_type.extensionkit_extension:
+        embedded_bundles_args["extensions"] = [archive_for_embedding]
+    else:
+        fail("Internal Error: Unexpectedly found product_type " + rule_descriptor.product_type)
+
     processor_partials = [
         partials.app_assets_validation_partial(
             app_icons = ctx.files.app_icons,
@@ -1153,6 +1212,16 @@ def _ios_extension_impl(ctx):
             provisioning_profile = provisioning_profile,
             rule_descriptor = rule_descriptor,
         ),
+        partials.app_intents_metadata_bundle_partial(
+            actions = actions,
+            cc_toolchains = ctx.split_attr._cc_toolchain_forwarder,
+            ctx = ctx,
+            deps = ctx.split_attr.app_intents,
+            disabled_features = ctx.disabled_features,
+            features = features,
+            label = label,
+            platform_prerequisites = platform_prerequisites,
+        ),
         partials.clang_rt_dylibs_partial(
             actions = actions,
             apple_mac_toolchain_info = apple_mac_toolchain_info,
@@ -1166,18 +1235,21 @@ def _ios_extension_impl(ctx):
             actions = actions,
             bundle_extension = bundle_extension,
             bundle_name = bundle_name,
-            debug_dependencies = ctx.attr.frameworks,
+            debug_dependencies = ctx.attr.frameworks + ctx.attr.deps,
             dsym_binaries = debug_outputs.dsym_binaries,
             dsym_info_plist_template = apple_mac_toolchain_info.dsym_info_plist_template,
             executable_name = executable_name,
             label_name = label.name,
             linkmaps = debug_outputs.linkmaps,
             platform_prerequisites = platform_prerequisites,
+            resolved_plisttool = apple_mac_toolchain_info.resolved_plisttool,
+            rule_label = label,
+            version = ctx.attr.version,
         ),
         partials.embedded_bundles_partial(
             embeddable_targets = ctx.attr.frameworks,
             platform_prerequisites = platform_prerequisites,
-            plugins = [archive_for_embedding],
+            **embedded_bundles_args
         ),
         partials.extension_safe_validation_partial(
             is_extension_safe = True,
@@ -1192,6 +1264,7 @@ def _ios_extension_impl(ctx):
             bundle_name = bundle_name,
             environment_plist = ctx.file._environment_plist,
             executable_name = executable_name,
+            extensionkit_keys_required = ctx.attr.extensionkit_extension,
             launch_storyboard = None,
             platform_prerequisites = platform_prerequisites,
             resource_deps = resource_deps,
@@ -1254,11 +1327,11 @@ def _ios_extension_impl(ctx):
         DefaultInfo(
             files = processor_result.output_files,
         ),
-        IosExtensionBundleInfo(),
         apple_common.new_executable_binary_provider(
             binary = binary_artifact,
             objc = link_result.objc,
         ),
+        new_iosextensionbundleinfo(),
         OutputGroupInfo(
             **outputs.merge_output_groups(
                 link_result.output_groups,
@@ -1439,6 +1512,9 @@ def _ios_dynamic_framework_impl(ctx):
             label_name = label.name,
             linkmaps = debug_outputs.linkmaps,
             platform_prerequisites = platform_prerequisites,
+            resolved_plisttool = apple_mac_toolchain_info.resolved_plisttool,
+            rule_label = label,
+            version = ctx.attr.version,
         ),
         partials.embedded_bundles_partial(
             frameworks = [archive_for_embedding],
@@ -1549,7 +1625,7 @@ def _ios_dynamic_framework_impl(ctx):
 
     return [
         DefaultInfo(files = processor_result.output_files),
-        IosFrameworkBundleInfo(),
+        new_iosframeworkbundleinfo(),
         OutputGroupInfo(
             **outputs.merge_output_groups(
                 link_result.output_groups,
@@ -1693,7 +1769,7 @@ def _ios_static_framework_impl(ctx):
 
     return [
         DefaultInfo(files = processor_result.output_files),
-        IosStaticFrameworkBundleInfo(),
+        new_iosstaticframeworkbundleinfo(),
         OutputGroupInfo(**processor_result.output_groups),
     ] + processor_result.providers
 
@@ -1707,11 +1783,17 @@ def _ios_imessage_application_impl(ctx):
     actions = ctx.actions
     apple_mac_toolchain_info = ctx.attr._mac_toolchain[AppleMacToolsToolchainInfo]
     apple_xplat_toolchain_info = ctx.attr._xplat_toolchain[AppleXPlatToolsToolchainInfo]
-    bundle_id = ctx.attr.bundle_id
     bundle_name, bundle_extension = bundling_support.bundle_full_name(
         custom_bundle_name = ctx.attr.bundle_name,
         label_name = ctx.label.name,
         rule_descriptor = rule_descriptor,
+    )
+    bundle_id = bundling_support.bundle_full_id(
+        bundle_id = ctx.attr.bundle_id,
+        bundle_id_suffix = ctx.attr.bundle_id_suffix,
+        bundle_name = bundle_name,
+        suffix_default = ctx.attr._bundle_id_suffix_default,
+        shared_capabilities = ctx.attr.shared_capabilities,
     )
     executable_name = ctx.attr.executable_name
     features = features_support.compute_enabled_features(
@@ -1892,7 +1974,7 @@ def _ios_imessage_application_impl(ctx):
         DefaultInfo(
             files = processor_result.output_files,
         ),
-        IosImessageApplicationBundleInfo(),
+        new_iosimessageapplicationbundleinfo(),
         OutputGroupInfo(**processor_result.output_groups),
     ] + processor_result.providers
 
@@ -1906,11 +1988,17 @@ def _ios_imessage_extension_impl(ctx):
     actions = ctx.actions
     apple_mac_toolchain_info = ctx.attr._mac_toolchain[AppleMacToolsToolchainInfo]
     apple_xplat_toolchain_info = ctx.attr._xplat_toolchain[AppleXPlatToolsToolchainInfo]
-    bundle_id = ctx.attr.bundle_id
     bundle_name, bundle_extension = bundling_support.bundle_full_name(
         custom_bundle_name = ctx.attr.bundle_name,
         label_name = ctx.label.name,
         rule_descriptor = rule_descriptor,
+    )
+    bundle_id = bundling_support.bundle_full_id(
+        bundle_id = ctx.attr.bundle_id,
+        bundle_id_suffix = ctx.attr.bundle_id_suffix,
+        bundle_name = bundle_name,
+        suffix_default = ctx.attr._bundle_id_suffix_default,
+        shared_capabilities = ctx.attr.shared_capabilities,
     )
     executable_name = ctx.attr.executable_name
     features = features_support.compute_enabled_features(
@@ -2054,6 +2142,9 @@ def _ios_imessage_extension_impl(ctx):
             label_name = label.name,
             linkmaps = debug_outputs.linkmaps,
             platform_prerequisites = platform_prerequisites,
+            resolved_plisttool = apple_mac_toolchain_info.resolved_plisttool,
+            rule_label = label,
+            version = ctx.attr.version,
         ),
         partials.embedded_bundles_partial(
             embeddable_targets = ctx.attr.frameworks,
@@ -2064,6 +2155,16 @@ def _ios_imessage_extension_impl(ctx):
             is_extension_safe = True,
             rule_label = label,
             targets_to_validate = ctx.attr.frameworks,
+        ),
+        partials.framework_import_partial(
+            actions = actions,
+            apple_mac_toolchain_info = apple_mac_toolchain_info,
+            features = features,
+            label_name = label.name,
+            platform_prerequisites = platform_prerequisites,
+            provisioning_profile = provisioning_profile,
+            rule_descriptor = rule_descriptor,
+            targets = ctx.attr.deps + ctx.attr.frameworks,
         ),
         partials.resources_partial(
             actions = actions,
@@ -2126,8 +2227,8 @@ def _ios_imessage_extension_impl(ctx):
         DefaultInfo(
             files = processor_result.output_files,
         ),
-        IosExtensionBundleInfo(),
-        IosImessageExtensionBundleInfo(),
+        new_iosextensionbundleinfo(),
+        new_iosimessageextensionbundleinfo(),
         OutputGroupInfo(
             **outputs.merge_output_groups(
                 link_result.output_groups,
@@ -2148,11 +2249,17 @@ def _ios_sticker_pack_extension_impl(ctx):
     actions = ctx.actions
     apple_mac_toolchain_info = ctx.attr._mac_toolchain[AppleMacToolsToolchainInfo]
     apple_xplat_toolchain_info = ctx.attr._xplat_toolchain[AppleXPlatToolsToolchainInfo]
-    bundle_id = ctx.attr.bundle_id
     bundle_name, bundle_extension = bundling_support.bundle_full_name(
         custom_bundle_name = ctx.attr.bundle_name,
         label_name = ctx.label.name,
         rule_descriptor = rule_descriptor,
+    )
+    bundle_id = bundling_support.bundle_full_id(
+        bundle_id = ctx.attr.bundle_id,
+        bundle_id_suffix = ctx.attr.bundle_id_suffix,
+        bundle_name = bundle_name,
+        suffix_default = ctx.attr._bundle_id_suffix_default,
+        shared_capabilities = ctx.attr.shared_capabilities,
     )
     executable_name = ctx.attr.executable_name
     features = features_support.compute_enabled_features(
@@ -2321,8 +2428,8 @@ def _ios_sticker_pack_extension_impl(ctx):
         DefaultInfo(
             files = processor_result.output_files,
         ),
-        IosExtensionBundleInfo(),
         IosStickerPackExtensionBundleInfo(),
+        new_iosextensionbundleinfo(),
         OutputGroupInfo(**processor_result.output_groups),
     ] + processor_result.providers
 
@@ -2348,26 +2455,24 @@ ios_application = rule_factory.create_apple_rule(
             is_test_supporting_rule = False,
             requires_legacy_cc_toolchain = True,
         ),
-        rule_attrs.bundle_id_attrs(is_mandatory = True),
         rule_attrs.cc_toolchain_forwarder_attrs(
             deps_cfg = transition_support.apple_platform_split_transition,
         ),
         rule_attrs.common_bundle_attrs(deps_cfg = transition_support.apple_platform_split_transition),
-        rule_attrs.common_tool_attrs,
+        rule_attrs.common_tool_attrs(),
         rule_attrs.device_family_attrs(
             allowed_families = rule_attrs.defaults.allowed_families.ios,
             is_mandatory = True,
         ),
-        rule_attrs.entitlements_attrs,
         rule_attrs.infoplist_attrs(),
-        rule_attrs.launch_images_attrs,
+        rule_attrs.launch_images_attrs(),
         rule_attrs.platform_attrs(
             platform_type = "ios",
             add_environment_plist = True,
         ),
-        rule_attrs.provisioning_profile_attrs(),
-        rule_attrs.settings_bundle_attrs,
-        rule_attrs.simulator_runner_template_attr,
+        rule_attrs.settings_bundle_attrs(),
+        rule_attrs.signing_attrs(),
+        rule_attrs.simulator_runner_template_attr(),
         {
             "alternate_icons": attr.label_list(
                 allow_files = True,
@@ -2463,21 +2568,21 @@ ios_app_clip = rule_factory.create_apple_rule(
             is_test_supporting_rule = False,
             requires_legacy_cc_toolchain = True,
         ),
-        rule_attrs.bundle_id_attrs(is_mandatory = True),
         rule_attrs.common_bundle_attrs(deps_cfg = transition_support.apple_platform_split_transition),
-        rule_attrs.common_tool_attrs,
+        rule_attrs.common_tool_attrs(),
         rule_attrs.device_family_attrs(
             allowed_families = rule_attrs.defaults.allowed_families.ios,
             is_mandatory = True,
         ),
-        rule_attrs.entitlements_attrs,
         rule_attrs.infoplist_attrs(),
         rule_attrs.platform_attrs(
             platform_type = "ios",
             add_environment_plist = True,
         ),
-        rule_attrs.provisioning_profile_attrs(),
-        rule_attrs.simulator_runner_template_attr,
+        rule_attrs.signing_attrs(
+            default_bundle_id_suffix = bundle_id_suffix_default.bundle_name,
+        ),
+        rule_attrs.simulator_runner_template_attr(),
         {
             "frameworks": attr.label_list(
                 aspects = [framework_provider_aspect],
@@ -2515,6 +2620,9 @@ However, iOS 14 introduced Widget Extensions that use a traditional `main` entry
             icon_extension = ".appiconset",
             icon_parent_extension = ".xcassets",
         ),
+        rule_attrs.app_intents_attrs(
+            deps_cfg = transition_support.apple_platform_split_transition,
+        ),
         rule_attrs.binary_linking_attrs(
             deps_cfg = transition_support.apple_platform_split_transition,
             extra_deps_aspects = [
@@ -2524,20 +2632,26 @@ However, iOS 14 introduced Widget Extensions that use a traditional `main` entry
             is_test_supporting_rule = False,
             requires_legacy_cc_toolchain = True,
         ),
-        rule_attrs.bundle_id_attrs(is_mandatory = True),
-        rule_attrs.common_bundle_attrs(deps_cfg = transition_support.apple_platform_split_transition),
-        rule_attrs.common_tool_attrs,
+        rule_attrs.cc_toolchain_forwarder_attrs(
+            deps_cfg = transition_support.apple_platform_split_transition,
+        ),
+        rule_attrs.common_bundle_attrs(
+            deps_cfg = transition_support.apple_platform_split_transition,
+        ),
+        rule_attrs.common_tool_attrs(),
         rule_attrs.device_family_attrs(
             allowed_families = rule_attrs.defaults.allowed_families.ios,
             is_mandatory = True,
         ),
-        rule_attrs.entitlements_attrs,
+        rule_attrs.extensionkit_attrs(),
         rule_attrs.infoplist_attrs(),
         rule_attrs.platform_attrs(
             platform_type = "ios",
             add_environment_plist = True,
         ),
-        rule_attrs.provisioning_profile_attrs(),
+        rule_attrs.signing_attrs(
+            default_bundle_id_suffix = bundle_id_suffix_default.bundle_name,
+        ),
         {
             "frameworks": attr.label_list(
                 providers = [[AppleBundleInfo, IosFrameworkBundleInfo]],
@@ -2585,9 +2699,8 @@ of those `ios_application` and/or `ios_extension` rules.""",
             is_test_supporting_rule = False,
             requires_legacy_cc_toolchain = True,
         ),
-        rule_attrs.bundle_id_attrs(is_mandatory = True),
         rule_attrs.common_bundle_attrs(deps_cfg = transition_support.apple_platform_split_transition),
-        rule_attrs.common_tool_attrs,
+        rule_attrs.common_tool_attrs(),
         rule_attrs.device_family_attrs(
             allowed_families = rule_attrs.defaults.allowed_families.ios,
             is_mandatory = True,
@@ -2597,7 +2710,10 @@ of those `ios_application` and/or `ios_extension` rules.""",
             platform_type = "ios",
             add_environment_plist = True,
         ),
-        rule_attrs.provisioning_profile_attrs(),
+        rule_attrs.signing_attrs(
+            default_bundle_id_suffix = bundle_id_suffix_default.bundle_name,
+            supports_capabilities = False,
+        ),
         {
             "bundle_only": attr.bool(
                 default = False,
@@ -2645,11 +2761,10 @@ ios_dynamic_framework = rule_factory.create_apple_rule(
             is_test_supporting_rule = False,
             requires_legacy_cc_toolchain = True,
         ),
-        rule_attrs.bundle_id_attrs(is_mandatory = True),
         rule_attrs.common_bundle_attrs(
             deps_cfg = transition_support.apple_platform_split_transition,
         ),
-        rule_attrs.common_tool_attrs,
+        rule_attrs.common_tool_attrs(),
         rule_attrs.device_family_attrs(
             allowed_families = rule_attrs.defaults.allowed_families.ios,
         ),
@@ -2658,7 +2773,10 @@ ios_dynamic_framework = rule_factory.create_apple_rule(
             add_environment_plist = True,
             platform_type = "ios",
         ),
-        rule_attrs.provisioning_profile_attrs(),
+        rule_attrs.signing_attrs(
+            default_bundle_id_suffix = bundle_id_suffix_default.bundle_name,
+            supports_capabilities = False,
+        ),
         {
             "bundle_only": attr.bool(
                 default = False,
@@ -2747,9 +2865,9 @@ i.e. `--features=-swift.no_generated_header`).""",
             deps_cfg = _STATIC_FRAMEWORK_DEPS_CFG,
         ),
         rule_attrs.common_bundle_attrs(
-            deps_cfg = transition_support.apple_platform_split_transition,
+            deps_cfg = _STATIC_FRAMEWORK_DEPS_CFG,
         ),
-        rule_attrs.common_tool_attrs,
+        rule_attrs.common_tool_attrs(),
         rule_attrs.device_family_attrs(
             allowed_families = rule_attrs.defaults.allowed_families.ios,
             is_mandatory = False,
@@ -2811,20 +2929,18 @@ for either an iOS iMessage extension or a Sticker Pack extension.""",
             icon_extension = ".appiconset",
             icon_parent_extension = ".xcassets",
         ),
-        rule_attrs.bundle_id_attrs(is_mandatory = True),
         rule_attrs.common_bundle_attrs(deps_cfg = transition_support.apple_platform_split_transition),
-        rule_attrs.common_tool_attrs,
+        rule_attrs.common_tool_attrs(),
         rule_attrs.device_family_attrs(
             allowed_families = rule_attrs.defaults.allowed_families.ios,
             is_mandatory = True,
         ),
-        rule_attrs.entitlements_attrs,
         rule_attrs.infoplist_attrs(),
         rule_attrs.platform_attrs(
             platform_type = "ios",
             add_environment_plist = True,
         ),
-        rule_attrs.provisioning_profile_attrs(),
+        rule_attrs.signing_attrs(),
         {
             "extension": attr.label(
                 mandatory = True,
@@ -2859,20 +2975,20 @@ ios_imessage_extension = rule_factory.create_apple_rule(
             is_test_supporting_rule = False,
             requires_legacy_cc_toolchain = True,
         ),
-        rule_attrs.bundle_id_attrs(is_mandatory = True),
         rule_attrs.common_bundle_attrs(deps_cfg = transition_support.apple_platform_split_transition),
-        rule_attrs.common_tool_attrs,
+        rule_attrs.common_tool_attrs(),
         rule_attrs.device_family_attrs(
             allowed_families = rule_attrs.defaults.allowed_families.ios,
             is_mandatory = True,
         ),
-        rule_attrs.entitlements_attrs,
         rule_attrs.infoplist_attrs(),
         rule_attrs.platform_attrs(
             platform_type = "ios",
             add_environment_plist = True,
         ),
-        rule_attrs.provisioning_profile_attrs(),
+        rule_attrs.signing_attrs(
+            default_bundle_id_suffix = bundle_id_suffix_default.bundle_name,
+        ),
         {
             "frameworks": attr.label_list(
                 providers = [[AppleBundleInfo, IosFrameworkBundleInfo]],
@@ -2895,20 +3011,20 @@ ios_sticker_pack_extension = rule_factory.create_apple_rule(
             icon_extension = ".stickersiconset",
             icon_parent_extension = ".xcstickers",
         ),
-        rule_attrs.bundle_id_attrs(is_mandatory = True),
         rule_attrs.common_bundle_attrs(deps_cfg = transition_support.apple_platform_split_transition),
-        rule_attrs.common_tool_attrs,
+        rule_attrs.common_tool_attrs(),
         rule_attrs.device_family_attrs(
             allowed_families = rule_attrs.defaults.allowed_families.ios,
             is_mandatory = True,
         ),
-        rule_attrs.entitlements_attrs,
         rule_attrs.infoplist_attrs(),
         rule_attrs.platform_attrs(
             platform_type = "ios",
             add_environment_plist = True,
         ),
-        rule_attrs.provisioning_profile_attrs(),
+        rule_attrs.signing_attrs(
+            default_bundle_id_suffix = bundle_id_suffix_default.bundle_name,
+        ),
         {
             "sticker_assets": attr.label_list(
                 allow_files = True,

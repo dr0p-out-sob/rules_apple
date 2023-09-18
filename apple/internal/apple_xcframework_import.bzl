@@ -218,7 +218,12 @@ def _get_xcframework_library_from_paths(*, target_triplet, xcframework):
     if xcframework.bundle_type == _BUNDLE_TYPE.frameworks:
         framework_includes = [paths.dirname(f.dirname) for f in binaries]
     else:
-        includes = [h.dirname for h in headers]
+        # For library XCFrameworks, in Xcode the contents of "Headers" are copied to an intermediate
+        # directory for referencing artifacts to include in the build; to replicate this behavior,
+        # make sure "includes" is set at the point where "Headers" is found, adjacent to any
+        # binaries.
+        if headers:
+            includes = [paths.join(f.dirname, "Headers") for f in binaries]
 
     return struct(
         binary = binaries[0],
@@ -445,7 +450,6 @@ def _apple_dynamic_xcframework_import_impl(ctx):
     deps = ctx.attr.deps
     disabled_features = ctx.disabled_features
     features = ctx.features
-    grep_includes = ctx.file._grep_includes
     label = ctx.label
     xcframework_imports = ctx.files.xcframework_imports
     xcode_config = ctx.attr._xcode_config[apple_common.XcodeVersionConfig]
@@ -514,7 +518,6 @@ def _apple_dynamic_xcframework_import_impl(ctx):
         disabled_features = disabled_features,
         features = features,
         framework_includes = xcframework_library.framework_includes,
-        grep_includes = grep_includes,
         header_imports = xcframework_library.headers,
         kind = "dynamic",
         label = label,
@@ -530,7 +533,7 @@ def _apple_dynamic_xcframework_import_impl(ctx):
     )
     providers.append(apple_dynamic_framework_info)
 
-    if xcframework_library.swift_module_interface:
+    if "apple._import_framework_via_swiftinterface" in features and xcframework_library.swift_module_interface:
         # Create SwiftInfo provider
         swift_toolchain = ctx.attr._toolchain[SwiftToolchainInfo]
         providers.append(
@@ -568,7 +571,6 @@ def _apple_static_xcframework_import_impl(ctx):
     deps = ctx.attr.deps
     disabled_features = ctx.disabled_features
     features = ctx.features
-    grep_includes = ctx.file._grep_includes
     has_swift = ctx.attr.has_swift
     label = ctx.label
     linkopts = ctx.attr.linkopts
@@ -659,7 +661,6 @@ def _apple_static_xcframework_import_impl(ctx):
         deps = deps,
         disabled_features = disabled_features,
         features = features,
-        grep_includes = grep_includes,
         header_imports = xcframework_library.headers,
         kind = "static",
         label = label,
@@ -671,7 +672,7 @@ def _apple_static_xcframework_import_impl(ctx):
     )
     providers.append(cc_info)
 
-    if xcframework_library.swift_module_interface:
+    if "apple._import_framework_via_swiftinterface" in features and xcframework_library.swift_module_interface:
         # Create SwiftInfo provider
         swift_toolchain = ctx.attr._toolchain[SwiftToolchainInfo]
         providers.append(
@@ -728,7 +729,7 @@ objc_library(
 """,
     implementation = _apple_dynamic_xcframework_import_impl,
     attrs = dicts.add(
-        rule_attrs.common_tool_attrs,
+        rule_attrs.common_tool_attrs(),
         swift_common.toolchain_attrs(),
         {
             "xcframework_imports": attr.label_list(
@@ -803,7 +804,7 @@ objc_library(
 """,
     implementation = _apple_static_xcframework_import_impl,
     attrs = dicts.add(
-        rule_attrs.common_tool_attrs,
+        rule_attrs.common_tool_attrs(),
         swift_common.toolchain_attrs(),
         {
             "alwayslink": attr.bool(
@@ -874,7 +875,7 @@ When linking a binary, all libraries named in that binary's transitive dependenc
             "sdk_frameworks": attr.string_list(
                 doc = """
 Names of SDK frameworks to link with (e.g. `AddressBook`, `QuartzCore`). `UIKit` and `Foundation`
-are always included when building for the iOS, tvOS and watchOS platforms. For macOS, only
+are always included when building for the iOS, tvOS, visionOS and watchOS platforms. For macOS, only
 `Foundation` is always included. When linking a top level binary, all SDK frameworks listed in that
 binary's transitive dependency graph are linked.
 """,

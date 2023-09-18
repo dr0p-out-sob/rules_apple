@@ -19,6 +19,10 @@ load(
     "common",
 )
 load(
+    "//test/starlark_tests/rules:analysis_failure_message_test.bzl",
+    "analysis_failure_message_test",
+)
+load(
     "//test/starlark_tests/rules:apple_verification_test.bzl",
     "apple_verification_test",
 )
@@ -205,16 +209,19 @@ def watchos_application_test_suite(name):
         tags = [name],
     )
 
-    # Test app bundles transitive Metadata.appintents bundle from extension.
-    archive_contents_test(
-        name = "{}_with_ext_contains_app_intents_metadata_bundle".format(name),
-        build_type = "simulator",
-        cpus = {"watchos_cpus": ["arm64"]},
-        target_under_test = "//test/starlark_tests/targets_under_test/watchos:app_with_ext_with_app_intents",
-        contains = [
-            "$BUNDLE_ROOT/PlugIns/ext_with_app_intents.appex/Metadata.appintents/extract.actionsdata",
-            "$BUNDLE_ROOT/PlugIns/ext_with_app_intents.appex/Metadata.appintents/version.json",
-        ],
+    infoplist_contents_test(
+        name = "{}_capability_set_derived_bundle_id_plist_test".format(name),
+        target_under_test = "//test/starlark_tests/targets_under_test/watchos:app_with_ext_with_capability_set_derived_bundle_id",
+        expected_values = {
+            "CFBundleIdentifier": "com.bazel.app.example.watchkitapp",
+        },
+        tags = [name],
+    )
+
+    analysis_failure_message_test(
+        name = "{}_test_watchos_single_target_application_required_error".format(name),
+        target_under_test = "//test/starlark_tests/targets_under_test/watchos:app_with_ext_with_invalid_watchos_version",
+        expected_error = "Error: Building an app extension-based watchOS 2 application for watchOS 9.0 or later.",
         tags = [name],
     )
 

@@ -44,13 +44,14 @@ Location types can be:
   - binary: Files are to be placed in the binary section of the bundle.
   - bundle: Files are to be placed at the root of the bundle.
   - content: Files are to be placed in the contents section of the bundle.
+  - extension: Files are to be placed in the Extensions section of the bundle.
   - framework: Files are to be placed in the Frameworks section of the bundle.
   - plugin: Files are to be placed in the PlugIns section of the bundle.
   - resources: Files are to be placed in the resources section of the bundle.
   - watch: Files are to be placed inside the Watch section of the bundle. Only applicable for iOS
     apps.
 
-For iOS, tvOS and watchOS, binary, content and resources all refer to the same
+For iOS, tvOS, visionOS, and watchOS, binary, content and resources all refer to the same
 location. Only in macOS these paths differ.
 
 All the files given will be symlinked into their expected location in the
@@ -107,6 +108,7 @@ _LOCATION_ENUM = struct(
     binary = "binary",
     bundle = "bundle",
     content = "content",
+    extension = "extension",
     framework = "framework",
     plugin = "plugin",
     resource = "resource",
@@ -195,6 +197,10 @@ def _archive_paths(
         ),
         _LOCATION_ENUM.bundle: bundle_path,
         _LOCATION_ENUM.content: contents_path,
+        _LOCATION_ENUM.extension: paths.join(
+            contents_path,
+            rule_descriptor.bundle_locations.contents_relative_extensions,
+        ),
         _LOCATION_ENUM.framework: paths.join(
             contents_path,
             rule_descriptor.bundle_locations.contents_relative_frameworks,

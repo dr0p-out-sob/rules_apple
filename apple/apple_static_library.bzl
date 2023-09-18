@@ -15,12 +15,12 @@
 """apple_static_library Starlark implementation"""
 
 load(
-    "@build_bazel_rules_apple//apple/internal:transition_support.bzl",
-    "transition_support",
-)
-load(
     "@build_bazel_rules_apple//apple/internal:linking_support.bzl",
     "linking_support",
+)
+load(
+    "@build_bazel_rules_apple//apple/internal:providers.bzl",
+    "new_applebinaryinfo",
 )
 load(
     "@build_bazel_rules_apple//apple/internal:rule_attrs.bzl",
@@ -31,12 +31,25 @@ load(
     "rule_factory",
 )
 load(
+    "@build_bazel_rules_apple//apple/internal:transition_support.bzl",
+    "transition_support",
+)
+load(
     "@build_bazel_rules_apple//apple:providers.bzl",
-    "AppleBinaryInfo",
     "ApplePlatformInfo",
 )
 
 def _apple_static_library_impl(ctx):
+    # Fail early if using the not yet fully supported visionOS platform type outside of testing.
+    if ctx.attr.platform_type == "visionos":
+        xcode_version_config = ctx.attr._xcode_config[apple_common.XcodeVersionConfig]
+        if xcode_version_config.xcode_version() < apple_common.dotted_version("15.0"):
+            fail("""
+visionOS static libraries require a visionOS SDK provided by Xcode 15 or later.
+
+Resolved Xcode is version {xcode_version}.
+""".format(xcode_version = str(xcode_version_config.xcode_version())))
+
     # Most validation of the platform type and minimum version OS currently happens in
     # `transition_support.apple_platform_split_transition`, either implicitly through native
     # `dotted_version` or explicitly through `fail` on an unrecognized platform type value.
@@ -63,7 +76,7 @@ Expected Apple platform type of "{platform_type}", but that was not found in {to
 
     providers = [
         DefaultInfo(files = depset(files_to_build), runfiles = runfiles),
-        AppleBinaryInfo(
+        new_applebinaryinfo(
             binary = link_result.library,
             infoplist = None,
         ),
@@ -95,7 +108,7 @@ implementation of `apple_static_library` in Bazel core so that it can be removed
         "lipo_archive": "%{name}_lipo.a",
     },
     attrs = [
-        rule_attrs.common_tool_attrs,
+        rule_attrs.common_tool_attrs(),
         rule_attrs.cc_toolchain_forwarder_attrs(
             deps_cfg = transition_support.apple_platform_split_transition,
         ),
@@ -114,8 +127,6 @@ A list of input files to be passed to the linker.
             "avoid_deps": attr.label_list(
                 cfg = transition_support.apple_platform_split_transition,
                 providers = [CcInfo],
-                # Flag required for compile_one_dependency
-                flags = ["DIRECT_COMPILE_TIME_INPUT"],
                 doc = """
 A list of library targets on which this framework depends in order to compile, but the transitive
 closure of which will not be linked into the framework's binary.
@@ -130,8 +141,6 @@ Files to be made available to the library archive upon execution.
             "deps": attr.label_list(
                 cfg = transition_support.apple_platform_split_transition,
                 providers = [CcInfo],
-                # Flag required for compile_one_dependency
-                flags = ["DIRECT_COMPILE_TIME_INPUT"],
                 doc = """
 A list of dependencies targets that will be linked into this target's binary. Any resources, such as
 asset catalogs, that are referenced by those targets will also be transitively included in the final
@@ -162,6 +171,7 @@ binaries/libraries will be created combining all architectures specified by
 *   `ios`: architectures gathered from `--ios_multi_cpus`.
 *   `macos`: architectures gathered from `--macos_cpus`.
 *   `tvos`: architectures gathered from `--tvos_cpus`.
+*   `visionos`: architectures gathered from `--visionos_cpus`.
 *   `watchos`: architectures gathered from `--watchos_cpus`.
 """,
             ),

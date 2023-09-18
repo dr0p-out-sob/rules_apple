@@ -23,16 +23,16 @@ load(
     "analysis_output_group_info_files_test",
 )
 load(
+    "//test/starlark_tests/rules:apple_dsym_bundle_info_test.bzl",
+    "apple_dsym_bundle_info_test",
+)
+load(
     "//test/starlark_tests/rules:apple_verification_test.bzl",
     "apple_verification_test",
 )
 load(
     "//test/starlark_tests/rules:common_verification_tests.bzl",
     "archive_contents_test",
-)
-load(
-    "//test/starlark_tests/rules:dsyms_test.bzl",
-    "dsyms_test",
 )
 load(
     "//test/starlark_tests/rules:infoplist_contents_test.bzl",
@@ -179,19 +179,50 @@ def tvos_application_test_suite(name):
         tags = [name],
     )
 
-    dsyms_test(
-        name = "{}_dsyms_test".format(name),
+    analysis_output_group_info_files_test(
+        name = "{}_dsyms_output_group_files_test".format(name),
         target_under_test = "//test/starlark_tests/targets_under_test/tvos:app",
-        expected_direct_dsyms = ["app_dsyms/app.app"],
-        expected_transitive_dsyms = ["app_dsyms/app.app"],
+        output_group_name = "dsyms",
+        expected_outputs = [
+            "app.app.dSYM/Contents/Info.plist",
+            "app.app.dSYM/Contents/Resources/DWARF/app",
+        ],
+        tags = [name],
+    )
+    apple_dsym_bundle_info_test(
+        name = "{}_dsym_bundle_info_files_test".format(name),
+        target_under_test = "//test/starlark_tests/targets_under_test/tvos:app",
+        expected_direct_dsyms = [
+            "dSYMs/app.app.dSYM",
+        ],
+        expected_transitive_dsyms = [
+            "dSYMs/app.app.dSYM",
+        ],
         tags = [name],
     )
 
-    dsyms_test(
+    analysis_output_group_info_files_test(
+        name = "{}_dsyms_output_group_transitive_files_test".format(name),
+        target_under_test = "//test/starlark_tests/targets_under_test/tvos:app_with_fmwk_with_fmwk_provisioned",
+        output_group_name = "dsyms",
+        expected_outputs = [
+            "app_with_fmwk_with_fmwk_provisioned.app.dSYM/Contents/Info.plist",
+            "app_with_fmwk_with_fmwk_provisioned.app.dSYM/Contents/Resources/DWARF/app_with_fmwk_with_fmwk_provisioned",
+            "fmwk_with_provisioning.framework.dSYM/Contents/Info.plist",
+            "fmwk_with_provisioning.framework.dSYM/Contents/Resources/DWARF/fmwk_with_provisioning",
+        ],
+        tags = [name],
+    )
+    apple_dsym_bundle_info_test(
         name = "{}_transitive_dsyms_test".format(name),
         target_under_test = "//test/starlark_tests/targets_under_test/tvos:app_with_fmwk_with_fmwk_provisioned",
-        expected_direct_dsyms = ["app_with_fmwk_with_fmwk_provisioned_dsyms/app_with_fmwk_with_fmwk_provisioned.app"],
-        expected_transitive_dsyms = ["app_with_fmwk_with_fmwk_provisioned_dsyms/app_with_fmwk_with_fmwk_provisioned.app", "fmwk_with_provisioning_dsyms/fmwk_with_provisioning.framework"],
+        expected_direct_dsyms = [
+            "dSYMs/app_with_fmwk_with_fmwk_provisioned.app.dSYM",
+        ],
+        expected_transitive_dsyms = [
+            "dSYMs/fmwk_with_provisioning.framework.dSYM",
+            "dSYMs/app_with_fmwk_with_fmwk_provisioned.app.dSYM",
+        ],
         tags = [name],
     )
 
@@ -577,6 +608,68 @@ def tvos_application_test_suite(name):
             "$BUNDLE_ROOT/Metadata.appintents/extract.actionsdata",
             "$BUNDLE_ROOT/Metadata.appintents/version.json",
         ],
+        tags = [name],
+    )
+
+    # Test dSYM binaries and linkmaps from framework embedded via 'data' are propagated correctly
+    # at the top-level tvos_application rule, and present through the 'dsysms' and 'linkmaps' output
+    # groups.
+    analysis_output_group_info_files_test(
+        name = "{}_with_runtime_framework_transitive_dsyms_output_group_info_test".format(name),
+        target_under_test = "//test/starlark_tests/targets_under_test/tvos:app_with_fmwks_from_frameworks_and_objc_swift_libraries_using_data",
+        output_group_name = "dsyms",
+        expected_outputs = [
+            "app_with_fmwks_from_frameworks_and_objc_swift_libraries_using_data.app.dSYM/Contents/Info.plist",
+            "app_with_fmwks_from_frameworks_and_objc_swift_libraries_using_data.app.dSYM/Contents/Resources/DWARF/app_with_fmwks_from_frameworks_and_objc_swift_libraries_using_data",
+            # Frameworks
+            "fmwk.framework.dSYM/Contents/Info.plist",
+            "fmwk.framework.dSYM/Contents/Resources/DWARF/fmwk",
+            "fmwk_with_resource_bundles.framework.dSYM/Contents/Info.plist",
+            "fmwk_with_resource_bundles.framework.dSYM/Contents/Resources/DWARF/fmwk_with_resource_bundles",
+            "fmwk_with_structured_resources.framework.dSYM/Contents/Info.plist",
+            "fmwk_with_structured_resources.framework.dSYM/Contents/Resources/DWARF/fmwk_with_structured_resources",
+        ],
+        tags = [name],
+    )
+    analysis_output_group_info_files_test(
+        name = "{}_with_runtime_framework_transitive_linkmaps_output_group_info_test".format(name),
+        target_under_test = "//test/starlark_tests/targets_under_test/tvos:app_with_fmwks_from_frameworks_and_objc_swift_libraries_using_data",
+        output_group_name = "linkmaps",
+        expected_outputs = [
+            "app_with_fmwks_from_frameworks_and_objc_swift_libraries_using_data_arm64.linkmap",
+            "app_with_fmwks_from_frameworks_and_objc_swift_libraries_using_data_x86_64.linkmap",
+            "fmwk_arm64.linkmap",
+            "fmwk_x86_64.linkmap",
+            "fmwk_with_resource_bundles_arm64.linkmap",
+            "fmwk_with_resource_bundles_x86_64.linkmap",
+            "fmwk_with_structured_resources_arm64.linkmap",
+            "fmwk_with_structured_resources_x86_64.linkmap",
+        ],
+        tags = [name],
+    )
+
+    # Test transitive frameworks dSYM bundles are propagated by the AppleDsymBundleInfo provider.
+    apple_dsym_bundle_info_test(
+        name = "{}_with_runtime_framework_dsym_bundle_info_files_test".format(name),
+        target_under_test = "//test/starlark_tests/targets_under_test/tvos:app_with_fmwks_from_frameworks_and_objc_swift_libraries_using_data",
+        expected_direct_dsyms = [
+            "dSYMs/app_with_fmwks_from_frameworks_and_objc_swift_libraries_using_data.app.dSYM",
+        ],
+        expected_transitive_dsyms = [
+            "dSYMs/app_with_fmwks_from_frameworks_and_objc_swift_libraries_using_data.app.dSYM",
+            "dSYMs/fmwk.framework.dSYM",
+            "dSYMs/fmwk_with_resource_bundles.framework.dSYM",
+            "dSYMs/fmwk_with_structured_resources.framework.dSYM",
+        ],
+        tags = [name],
+    )
+
+    infoplist_contents_test(
+        name = "{}_capability_set_derived_bundle_id_plist_test".format(name),
+        target_under_test = "//test/starlark_tests/targets_under_test/tvos:app_with_capability_set_derived_bundle_id",
+        expected_values = {
+            "CFBundleIdentifier": "com.bazel.app.example",
+        },
         tags = [name],
     )
 

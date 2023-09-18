@@ -91,7 +91,16 @@ def _macos_binary_infoplist_impl(ctx):
         label_name = ctx.label.name,
         rule_descriptor = rule_descriptor,
     )
-    bundle_id = ctx.attr.bundle_id
+    bundle_id = ""
+    if ctx.attr.bundle_id or ctx.attr.base_bundle_id:
+        bundle_id = bundling_support.bundle_full_id(
+            base_bundle_id = ctx.attr.base_bundle_id,
+            bundle_id = ctx.attr.bundle_id,
+            bundle_id_suffix = ctx.attr.bundle_id_suffix,
+            bundle_name = bundle_name,
+            suffix_default = ctx.attr._bundle_id_suffix_default,
+        )
+
     features = features_support.compute_enabled_features(
         requested_features = ctx.features,
         unsupported_features = ctx.disabled_features,
@@ -159,9 +168,12 @@ def _macos_binary_infoplist_impl(ctx):
 macos_binary_infoplist = rule(
     implementation = _macos_binary_infoplist_impl,
     attrs = dicts.add(
-        rule_attrs.common_tool_attrs,
+        rule_attrs.common_tool_attrs(),
+        rule_attrs.signing_attrs(
+            supports_capabilities = False,
+            profile_extension = ".provisionprofile",  # Unused, but staying consistent with macOS.
+        ),
         {
-            "bundle_id": attr.string(mandatory = False),
             "infoplists": attr.label_list(
                 allow_files = [".plist"],
                 mandatory = False,
@@ -248,7 +260,7 @@ def _macos_command_line_launchdplist_impl(ctx):
 macos_command_line_launchdplist = rule(
     implementation = _macos_command_line_launchdplist_impl,
     attrs = dicts.add(
-        rule_attrs.common_tool_attrs,
+        rule_attrs.common_tool_attrs(),
         {
             "launchdplists": attr.label_list(
                 allow_files = [".plist"],

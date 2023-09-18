@@ -94,10 +94,10 @@ bzl_library(
     ],
     deps = [
         ":linking_support",
+        ":providers",
         ":rule_attrs",
         ":rule_factory",
         ":transition_support",
-        "//apple:providers",
     ],
 )
 
@@ -113,10 +113,7 @@ bzl_library(
 bzl_library(
     name = "apple_toolchains",
     srcs = ["apple_toolchains.bzl"],
-    visibility = [
-        "//apple:__subpackages__",
-        "//test/starlark_tests:__subpackages__",
-    ],
+    visibility = ["//apple:__subpackages__"],
     deps = [
         "@bazel_skylib//rules:common_settings",
     ],
@@ -157,6 +154,22 @@ bzl_library(
     srcs = ["bundling_support.bzl"],
     visibility = [
         "//apple:__subpackages__",
+    ],
+    deps = [
+        "//apple:providers",
+    ],
+)
+
+bzl_library(
+    name = "capabilities_rules",
+    srcs = ["capabilities_rules.bzl"],
+    visibility = [
+        "//apple:__subpackages__",
+    ],
+    deps = [
+        ":bundling_support",
+        ":providers",
+        "//apple:providers",
     ],
 )
 
@@ -200,6 +213,7 @@ bzl_library(
     ],
     deps = [
         ":apple_product_type",
+        ":bundling_support",
         ":resource_actions",
         "//apple:common",
         "//apple/internal/utils:defines",
@@ -253,6 +267,7 @@ bzl_library(
     deps = [
         "//apple:providers",
         "//apple:utils",
+        "//apple/internal:providers",
         "//apple/internal/utils:files",
         "@bazel_skylib//lib:paths",
         "@build_bazel_rules_swift//swift",
@@ -289,6 +304,7 @@ bzl_library(
         ":partials",
         ":platform_support",
         ":processor",
+        ":providers",
         ":resources",
         ":rule_attrs",
         ":rule_factory",
@@ -362,6 +378,7 @@ bzl_library(
         ":partials",
         ":platform_support",
         ":processor",
+        ":providers",
         ":resources",
         ":rule_attrs",
         ":rule_factory",
@@ -458,6 +475,15 @@ bzl_library(
 )
 
 bzl_library(
+    name = "providers",
+    srcs = ["providers.bzl"],
+    visibility = [
+        "//apple:__subpackages__",
+        "//test:__subpackages__",
+    ],
+)
+
+bzl_library(
     name = "resource_actions",
     srcs = ["resource_actions.bzl"],
     visibility = [
@@ -484,6 +510,7 @@ bzl_library(
     ],
     deps = [
         "//apple:providers",
+        "//apple/internal:providers",
         "//apple/internal/partials/support:resources_support",
         "//apple/internal/utils:bundle_paths",
         "@bazel_skylib//lib:partial",
@@ -500,6 +527,7 @@ bzl_library(
     ],
     deps = [
         ":apple_toolchains",
+        ":bundling_support",
         "//apple:common",
         "//apple:providers",
         "//apple/internal/aspects:app_intents_aspect",
@@ -590,9 +618,7 @@ bzl_library(
 bzl_library(
     name = "swift_support",
     srcs = ["swift_support.bzl"],
-    visibility = [
-        "//apple:__subpackages__",
-    ],
+    visibility = ["//apple:__subpackages__"],
     deps = [
         "//apple/internal/aspects:swift_usage_aspect",
     ],
@@ -605,6 +631,7 @@ bzl_library(
         "//apple:__subpackages__",
     ],
     deps = [
+        "//apple/build_settings",
         "@bazel_skylib//lib:dicts",
     ],
 )
@@ -627,6 +654,7 @@ bzl_library(
         ":partials",
         ":platform_support",
         ":processor",
+        ":providers",
         ":resources",
         ":rule_attrs",
         ":rule_factory",
@@ -640,6 +668,39 @@ bzl_library(
         "//apple/internal/utils:clang_rt_dylibs",
         "@bazel_tools//tools/cpp:toolchain_utils.bzl",
         "@build_bazel_rules_swift//swift",
+    ],
+)
+
+bzl_library(
+    name = "visionos_rules",
+    srcs = ["visionos_rules.bzl"],
+    visibility = [
+        "//apple:__subpackages__",
+    ],
+    deps = [
+        ":apple_product_type",
+        ":apple_toolchains",
+        ":bundling_support",
+        ":entitlements_support",
+        ":features_support",
+        ":linking_support",
+        ":outputs",
+        ":partials",
+        ":platform_support",
+        ":processor",
+        ":providers",
+        ":resources",
+        ":rule_attrs",
+        ":rule_factory",
+        ":rule_support",
+        ":stub_support",
+        ":swift_support",
+        "//apple:providers",
+        "//apple/internal/aspects:framework_provider_aspect",
+        "//apple/internal/aspects:resource_aspect",
+        "//apple/internal/utils:clang_rt_dylibs",
+        "@bazel_skylib//lib:sets",
+        "@bazel_tools//tools/cpp:toolchain_utils.bzl",
     ],
 )
 
@@ -660,6 +721,7 @@ bzl_library(
         ":partials",
         ":platform_support",
         ":processor",
+        ":providers",
         ":resources",
         ":rule_attrs",
         ":rule_factory",
@@ -692,6 +754,7 @@ bzl_library(
         ":partials",
         ":platform_support",
         ":processor",
+        ":providers",
         ":resources",
         ":rule_attrs",
         ":rule_factory",
@@ -731,6 +794,20 @@ bzl_library(
     ],
 )
 
+bzl_library(
+    name = "docc",
+    srcs = ["docc.bzl"],
+    visibility = [
+        "//apple:__subpackages__",
+    ],
+    deps = [
+        "//apple:providers",
+        "//apple/internal/aspects:docc_archive_aspect",
+        "@bazel_skylib//lib:dicts",
+        "@build_bazel_apple_support//lib:apple_support",
+    ],
+)
+
 # Consumed by bazel tests.
 filegroup(
     name = "for_bazel_tests",
@@ -762,6 +839,15 @@ environment_plist(
 environment_plist(
     name = "environment_plist_macos",
     platform_type = "macos",
+    # Used by the rule implementations, so it needs to be public; but
+    # should be considered an implementation detail of the rules and
+    # not used by other things.
+    visibility = ["//visibility:public"],
+)
+
+environment_plist(
+    name = "environment_plist_visionos",
+    platform_type = "visionos",
     # Used by the rule implementations, so it needs to be public; but
     # should be considered an implementation detail of the rules and
     # not used by other things.

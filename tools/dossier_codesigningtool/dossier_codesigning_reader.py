@@ -57,6 +57,7 @@ To use this script with a dossier directly within an extracted ipa's app bundle:
 """
 
 import argparse
+import collections
 import concurrent.futures
 import glob
 import io
@@ -191,6 +192,26 @@ class DossierDirectory(object):
       shutil.rmtree(self.path)
 
 
+SigningFuture = collections.namedtuple('SigningFuture', ['future', 'note'])
+
+
+def submit_future(note, executor, function, *args, **kwargs) -> SigningFuture:
+  """Runs a function and creates a SigningFuture with the given note.
+
+  Args:
+    note: Text which is attached to this future for debugging
+    executor: concurrent.futures.Executor instance to use.
+    function: The function to call.
+    *args: Tuple of positional arguments for function.
+    **kwargs: Dict of keyword arguments for function.
+
+  Returns:
+    The SigningFuture object.
+  """
+  print('Submitting task to threadpool: %s' % note)
+  return SigningFuture(executor.submit(function, *args, **kwargs), note)
+
+
 # Regex with benign codesign messages that can be safely ignored.
 # It matches the following benign outputs:
 # * signed Mach-O thin
@@ -215,8 +236,9 @@ _SECURITY_FIND_IDENTITY_OUTPUT_REGEX = re.compile(r'(?P<hash>[A-F0-9]{40})')
 # The filename for a manifest within a manifest
 MANIFEST_FILENAME = 'manifest.json'
 
-# All optional ipa subdirectories by Apple; 'Payload' is required of all IPAs.
-IPA_OPTIONAL_SUBDIRS = [
+# All ipa subdirectories allowed by Apple; 'Payload' is required of all IPAs.
+IPA_ALLOWED_SUBDIRS = [
+    'Payload',
     'SwiftSupport',
     'WatchKitSupport2',
     'MessagesApplicationExtensionSupport',
@@ -357,32 +379,26 @@ def _filter_codesign_tool_output(exit_status, codesign_stdout, codesign_stderr):
           _filter_codesign_output(codesign_stderr))
 
 
-def _invoke_codesign(codesign_path, identity, entitlements_path, force_signing,
-                     disable_timestamp, full_path_to_sign, signing_keychain):
+def _invoke_codesign(codesign_path, identity, entitlements_path,
+                     full_path_to_sign, signing_keychain):
   """Invokes the codesign tool on the given path to sign.
 
   Args:
     codesign_path: Path to the codesign tool as a string.
     identity: The unique identifier string to identify code signatures.
     entitlements_path: Path to the file with entitlement data. Optional.
-    force_signing: If true, replaces any existing signature on the path given.
-    disable_timestamp: If true, disables the use of timestamp services.
     full_path_to_sign: Path to the bundle or binary to code sign as a string.
     signing_keychain: If not None, this will only search for the signing
       identity in the keychain file specified, forwarding the path directly to
       the /usr/bin/codesign invocation via its --keychain argument.
   """
-  cmd = [codesign_path, '-v', '--sign', identity]
+  cmd = [codesign_path, '-v', '--sign', identity, '--force']
   if entitlements_path:
     cmd.extend([
         '--entitlements',
         entitlements_path,
         '--generate-entitlement-der',
     ])
-  if force_signing:
-    cmd.append('--force')
-  if disable_timestamp:
-    cmd.append('--timestamp=none')
   if signing_keychain:
     cmd.extend([
         '--keychain',
@@ -468,13 +484,13 @@ def _extract_archive(*, app_bundle_subdir, working_dir, unsigned_archive_path):
 
   Args:
     app_bundle_subdir: String, the path relative to the working directory to the
-      directory with the .app within the archive which will be returned.
+      directory containing the `Payload` directory.
     working_dir: String, the path to unzip the archive file into.
     unsigned_archive_path: String, the full path to a unsigned archive.
 
   Returns:
     extracted_bundle: String, the path to extracted bundle, which is
-      {working_dir}/{app_bundle_subdir}/*.app
+      {working_dir}/{app_bundle_subdir}/Payload/*.app
 
   Raises:
     OSError: when app bundle is not found in extracted archive.
@@ -483,7 +499,7 @@ def _extract_archive(*, app_bundle_subdir, working_dir, unsigned_archive_path):
       ['ditto', '-x', '-k', unsigned_archive_path, working_dir])
 
   extracted_bundles = glob.glob(
-      os.path.join(working_dir, app_bundle_subdir, '*.app'))
+      os.path.join(working_dir, app_bundle_subdir, 'Payload', '*.app'))
   if len(extracted_bundles) != 1:
     raise OSError(
         f'Input with IPA contents broken, {len(extracted_bundles)} apps were'
@@ -497,37 +513,31 @@ def _package_ipa(*, app_bundle_subdir, working_dir, output_ipa):
   """Package signed bundle into the target location.
 
   Args:
-    app_bundle_subdir: String, the path relative to the working
-      directory to the directory with the .app within the archive which will be
-      returned.
+    app_bundle_subdir: String, the path relative to the working directory to the
+      directory containing the `Payload` directory.
     working_dir: String, the path to the folder which contains contents suitable
       for an unzipped IPA archive.
     output_ipa: String, a path to where the zipped IPA file should be placed.
 
   Raises:
-    OSError: If a recognized 'Payload' sub directory could not be found.
+    OSError: If IPA directories are malformed
   """
-  # Expand a user path if specified, resolve symlinks if necessary.
-  output_ipa_fullpath = os.path.realpath(os.path.expanduser(output_ipa))
-  print('Archiving IPA package %s.' % output_ipa_fullpath)
-  # Check that Payload exists; if not, then it can be assumed that we do not
-  # have the means to form a valid IPA.
-  ipa_payload_path = os.path.join(working_dir, app_bundle_subdir)
-  if not os.path.exists(ipa_payload_path):
-    raise OSError(
-        f'Could not find a Payload to build a valid IPA in: {ipa_payload_path}'
-    )
-  ipa_source_dirs = [ipa_payload_path]
-  for ipa_optional_subdir in IPA_OPTIONAL_SUBDIRS:
-    # Check that the optional sub directory exists within the working directory
-    # before adding it to the ditto cmd, to avoid noisy diagnostic messaging
-    # from ditto's stderr output.
-    ipa_subdir_path = os.path.join(working_dir, ipa_optional_subdir)
-    if os.path.exists(ipa_subdir_path):
-      ipa_source_dirs.append(ipa_subdir_path)
+  output_ipa = os.path.realpath(os.path.expanduser(output_ipa))
+  bundle_path = os.path.join(working_dir, app_bundle_subdir)
+
+  print(f'Archiving IPA package {output_ipa} from {bundle_path}')
+
+  if not os.path.exists(os.path.join(bundle_path, 'Payload')):
+    raise OSError(f'Could not find a Payload for IPA in: {bundle_path}')
+
+  for entry in os.scandir(bundle_path):
+    if not entry.is_dir():
+      raise OSError(f'Only directories allowed at base of IPA: {entry.path}')
+    if entry.name not in IPA_ALLOWED_SUBDIRS:
+      raise OSError(f'Disallowed IPA base directory detected: {entry.path}')
+
   subprocess.check_call(
-      ['ditto', '-c', '-k', '--norsrc', '--noextattr', '--keepParent'] +
-      ipa_source_dirs + [output_ipa_fullpath])
+      ['ditto', '-c', '-k', '--norsrc', '--noextattr', bundle_path, output_ipa])
 
 
 def _sign_bundle_with_manifest(
@@ -579,28 +589,31 @@ def _sign_bundle_with_manifest(
         'Signing failed - codesigning identity not specified in manifest '
         'and unable to infer identity.')
 
-  entitlements_filename = manifest.get(ENTITLEMENTS_KEY)
-  entitlements_source_path = os.path.join(dossier_directory_path,
-                                          entitlements_filename)
-
   with tempfile.TemporaryDirectory() as working_dir:
     print('Working dir for temp signing artifacts created: %s' % working_dir)
-    if allowed_entitlements:
-      _, entitlements_for_signing_path = tempfile.mkstemp(
-          dir=working_dir, suffix='.plist')
-
-      _generate_entitlements_for_signing(
-          src=entitlements_source_path,
-          allowed_entitlements=allowed_entitlements,
-          dest=entitlements_for_signing_path)
-    else:
+    entitlements_filename = manifest.get(ENTITLEMENTS_KEY)
+    entitlements_for_signing_path = None
+    if entitlements_filename:
+      entitlements_source_path = os.path.join(
+          dossier_directory_path, entitlements_filename
+      )
       entitlements_for_signing_path = entitlements_source_path
+      if allowed_entitlements:
+        _, entitlements_for_signing_path = tempfile.mkstemp(
+            dir=working_dir, suffix='.plist'
+        )
+
+        _generate_entitlements_for_signing(
+            src=entitlements_source_path,
+            allowed_entitlements=allowed_entitlements,
+            dest=entitlements_for_signing_path,
+        )
 
     # submit each embedded manifest to sign concurrently
     codesign_futures = _sign_embedded_bundles_with_manifest(
         manifest, root_bundle_path, dossier_directory_path, codesign_path,
         allowed_entitlements, signing_keychain, codesign_identity, executor)
-    _wait_embedded_manifest_futures(codesign_futures)
+    _wait_signing_futures(codesign_futures)
 
     if provisioning_profile_file_path:
       _copy_embedded_provisioning_profile(
@@ -611,10 +624,53 @@ def _sign_bundle_with_manifest(
         codesign_path=codesign_path,
         identity=codesign_identity,
         entitlements_path=entitlements_for_signing_path,
-        force_signing=True,
-        disable_timestamp=False,
         full_path_to_sign=root_bundle_path,
         signing_keychain=signing_keychain)
+
+
+def _sign_framework(
+    root_path, codesign_path, signing_keychain, codesign_identity, executor):
+  """Signs Framework and the Framework's dylibs and sub-Frameworks.
+
+  Args:
+    root_path: The absolute path to the framework.
+    codesign_path: Path to the codesign tool as a string.
+    signing_keychain: If not None, this will only search for the signing
+      identity in the keychain file specified, forwarding the path directly to
+      the /usr/bin/codesign invocation via its --keychain argument.
+    codesign_identity: The codesign identity to use for codesigning.
+    executor: Asynchronous jobs Executor from concurrent.futures.
+  """
+
+  path_to_search_for_dylibs = root_path
+  dylib_codesign_futures = []
+  for root, _, files in os.walk(path_to_search_for_dylibs):
+    for file_name in files:
+      if not file_name.endswith('.dylib'):
+        continue
+      dylib_path = os.path.join(root, file_name)
+      dylib_codesign_futures.append(
+          submit_future('Signing dylib at: %s' % dylib_path, executor,
+                        _invoke_codesign, codesign_path, codesign_identity,
+                        None, dylib_path, signing_keychain)
+      )
+  _wait_signing_futures(dylib_codesign_futures)
+
+  subframework_dir = os.path.join(root_path, 'Frameworks')
+  subframwork_codesign_futures = []
+  if os.path.exists(subframework_dir):
+    for subframework in os.listdir(subframework_dir):
+      path = os.path.join(subframework_dir, subframework)
+      dylib_codesign_futures.append(
+          submit_future('Signing sub-framework at: %s' % path, executor,
+                        _invoke_codesign, codesign_path, codesign_identity,
+                        None, path, signing_keychain)
+      )
+  _wait_signing_futures(subframwork_codesign_futures)
+
+  print('Signing framework at: %s' % root_path)
+  _invoke_codesign(codesign_path, codesign_identity,
+                   None, root_path, signing_keychain)
 
 
 def _sign_embedded_bundles_with_manifest(
@@ -626,7 +682,7 @@ def _sign_embedded_bundles_with_manifest(
     signing_keychain,
     codesign_identity,
     executor):
-  """Signs embedded bundles concurrently and returns futures list.
+  """Signs embedded bundles/dylibs/frameworks concurrently and returns futures.
 
   Args:
     manifest: The contents of the manifest in this dossier.
@@ -645,18 +701,44 @@ def _sign_embedded_bundles_with_manifest(
 
   Returns:
     List of asynchronous Future tasks submited to executor.
+
+  Raises:
+    OSError: If Framework not formed properly
   """
   codesign_futures = []
+  framework_dir = os.path.join(root_bundle_path, 'Frameworks')
   for embedded_manifest in manifest.get(EMBEDDED_BUNDLE_MANIFESTS_KEY, []):
+    if not embedded_manifest.get(PROVISIONING_PROFILE_KEY):
+      continue
     embedded_relative_path = embedded_manifest[EMBEDDED_RELATIVE_PATH_KEY]
+    if embedded_relative_path.startswith('Frameworks/'):
+      continue
     embedded_bundle_path = os.path.join(root_bundle_path,
                                         embedded_relative_path)
-    codesign_future = executor.submit(_sign_bundle_with_manifest,
-                                      embedded_bundle_path, embedded_manifest,
-                                      dossier_directory_path, codesign_path,
-                                      allowed_entitlements, signing_keychain,
-                                      codesign_identity, executor)
-    codesign_futures.append(codesign_future)
+    codesign_futures.append(
+        submit_future('embedded sign: %s' % embedded_bundle_path, executor,
+                      _sign_bundle_with_manifest,
+                      embedded_bundle_path, embedded_manifest,
+                      dossier_directory_path, codesign_path,
+                      allowed_entitlements, signing_keychain,
+                      codesign_identity, executor))
+
+  if os.path.exists(framework_dir):
+    for entry in os.listdir(framework_dir):
+      entry_path = os.path.join(framework_dir, entry)
+      if entry.endswith('.dylib'):
+        codesign_futures.append(
+            submit_future('Signing base dylib at: %s' % entry_path, executor,
+                          _invoke_codesign, codesign_path, codesign_identity,
+                          None, entry_path, signing_keychain)
+        )
+      elif entry.endswith('.framework'):
+        codesign_futures.append(
+            submit_future('Signing framework at: %s' % entry_path, executor,
+                          _sign_framework, entry_path, codesign_path,
+                          signing_keychain, codesign_identity, executor))
+      else:
+        raise OSError('Error: Unexpected entry in Framework folder: %s' % entry)
 
   return codesign_futures
 
@@ -683,28 +765,31 @@ def _copy_embedded_provisioning_profile(
     shutil.copy(provisioning_profile_file_path, dest_provisioning_profile_path)
 
 
-def _wait_embedded_manifest_futures(
-    future_list):
-  """Waits for embedded manifets futures to complete or any to fail.
+def _wait_signing_futures(signing_futures):
+  """Waits for futures of signing tasks to complete or any to fail.
 
   Args:
-    future_list: List of Future instances to watch for completition or failure.
+    signing_futures: SigningFuture list to wait on for completition or failure.
 
   Raises:
-    SystemExit: if any of the Futures raised an exception.
+    The exception from the codesign task
   """
-  done_futures, not_done_futures = concurrent.futures.wait(
-      future_list, return_when=concurrent.futures.FIRST_EXCEPTION)
-  exceptions = [f.exception() for f in done_futures]
+  _, not_done_futures = concurrent.futures.wait(
+      [f.future for f in signing_futures],
+      return_when=concurrent.futures.FIRST_EXCEPTION)
+
+  crashed_signing_futures = [
+      f for f in signing_futures if f.future.done() and f.future.exception()
+  ]
 
   for not_done_future in not_done_futures:
     not_done_future.cancel()
 
-  if any(exceptions):
-    errors = '\n\n'.join(
-        f'\t{i}) {repr(e)}' for i, e in enumerate(exceptions, start=1))
-    raise SystemExit(
-        f'Signing failed - one or more codesign tasks failed:\n{errors}')
+  if any(crashed_signing_futures):
+    print('Codesign task(s) failed:\n' +
+          '\n\n'.join(f'\t{i}) {repr(f.note)}\n{repr(f.future.exception())}'
+                      for i, f in enumerate(crashed_signing_futures, start=1)))
+    raise crashed_signing_futures[0].future.exception()
 
 
 def _extract_zipped_dossier(zipped_dossier_path):
@@ -788,7 +873,8 @@ def _sign_archived_bundle(
     allowed_entitlements: A list of strings indicating keys that are valid for
       entitlements. Only the strings listed here will be transferred to the
       generated entitlements.
-    app_bundle_subdir: String, the path relative to the working
+    app_bundle_subdir: String, the path relative to the working directory to the
+      directory containing the `Payload` directory.
     codesign_path: Path to the codesign tool as a string.
     dossier_directory_path: Directory of dossier to be used for signing.
     output_ipa: String, a path to where the zipped IPA file should be placed.
@@ -864,7 +950,7 @@ def _sign_bundle(parsed_args):
       dossier_directory_path = os.path.join(working_dir, 'dossier')
       _sign_archived_bundle(
           allowed_entitlements=allowed_entitlements,
-          app_bundle_subdir='bundle/Payload',
+          app_bundle_subdir='bundle',
           codesign_path=codesign_path,
           dossier_directory_path=dossier_directory_path,
           output_ipa=output_artifact,
@@ -896,7 +982,7 @@ def _sign_bundle(parsed_args):
         )
         _sign_archived_bundle(
             allowed_entitlements=allowed_entitlements,
-            app_bundle_subdir='Payload',
+            app_bundle_subdir='',
             codesign_path=codesign_path,
             dossier_directory_path=dossier_directory.path,
             output_ipa=output_artifact,

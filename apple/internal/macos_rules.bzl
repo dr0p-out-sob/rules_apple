@@ -25,6 +25,7 @@ load(
 )
 load(
     "@build_bazel_rules_apple//apple/internal:bundling_support.bzl",
+    "bundle_id_suffix_default",
     "bundling_support",
 )
 load(
@@ -58,6 +59,18 @@ load(
 load(
     "@build_bazel_rules_apple//apple/internal:processor.bzl",
     "processor",
+)
+load(
+    "@build_bazel_rules_apple//apple/internal:providers.bzl",
+    "new_applebinaryinfo",
+    "new_appleframeworkbundleinfo",
+    "new_macosapplicationbundleinfo",
+    "new_macosbundlebundleinfo",
+    "new_macosextensionbundleinfo",
+    "new_macoskernelextensionbundleinfo",
+    "new_macosquicklookpluginbundleinfo",
+    "new_macosspotlightimporterbundleinfo",
+    "new_macosxpcservicebundleinfo",
 )
 load(
     "@build_bazel_rules_apple//apple/internal:resources.bzl",
@@ -118,19 +131,12 @@ load(
 )
 load(
     "@build_bazel_rules_apple//apple:providers.bzl",
-    "AppleBinaryInfo",
     "AppleBinaryInfoplistInfo",
     "AppleBundleInfo",
     "AppleBundleVersionInfo",
-    "AppleFrameworkBundleInfo",
     "ApplePlatformInfo",
-    "MacosApplicationBundleInfo",
-    "MacosBundleBundleInfo",
     "MacosExtensionBundleInfo",
     "MacosFrameworkBundleInfo",
-    "MacosKernelExtensionBundleInfo",
-    "MacosQuickLookPluginBundleInfo",
-    "MacosSpotlightImporterBundleInfo",
     "MacosStaticFrameworkBundleInfo",
     "MacosXPCServiceBundleInfo",
 )
@@ -157,11 +163,17 @@ def _macos_application_impl(ctx):
     actions = ctx.actions
     apple_mac_toolchain_info = ctx.attr._mac_toolchain[AppleMacToolsToolchainInfo]
     apple_xplat_toolchain_info = ctx.attr._xplat_toolchain[AppleXPlatToolsToolchainInfo]
-    bundle_id = ctx.attr.bundle_id
     bundle_name, bundle_extension = bundling_support.bundle_full_name(
         custom_bundle_name = ctx.attr.bundle_name,
         label_name = ctx.label.name,
         rule_descriptor = rule_descriptor,
+    )
+    bundle_id = bundling_support.bundle_full_id(
+        bundle_id = ctx.attr.bundle_id,
+        bundle_id_suffix = ctx.attr.bundle_id_suffix,
+        bundle_name = bundle_name,
+        suffix_default = ctx.attr._bundle_id_suffix_default,
+        shared_capabilities = ctx.attr.shared_capabilities,
     )
     bundle_verification_targets = [struct(target = ext) for ext in verification_targets]
     cc_toolchain_forwarder = ctx.split_attr._cc_toolchain_forwarder
@@ -233,7 +245,6 @@ def _macos_application_impl(ctx):
             deps = ctx.split_attr.app_intents,
             disabled_features = ctx.disabled_features,
             features = features,
-            grep_includes = ctx.file._grep_includes,
             label = label,
             platform_prerequisites = platform_prerequisites,
         ),
@@ -291,6 +302,9 @@ def _macos_application_impl(ctx):
             label_name = label.name,
             linkmaps = debug_outputs.linkmaps,
             platform_prerequisites = platform_prerequisites,
+            resolved_plisttool = apple_mac_toolchain_info.resolved_plisttool,
+            rule_label = label,
+            version = ctx.attr.version,
         ),
         partials.embedded_bundles_partial(
             bundle_embedded_bundles = True,
@@ -384,17 +398,6 @@ def _macos_application_impl(ctx):
         actions = actions,
         label_name = label.name,
     )
-    run_support.register_macos_executable(
-        actions = actions,
-        bundle_extension = bundle_extension,
-        bundle_name = bundle_name,
-        label_name = label.name,
-        output = executable,
-        platform_prerequisites = platform_prerequisites,
-        predeclared_outputs = predeclared_outputs,
-        rule_descriptor = rule_descriptor,
-        runner_template = ctx.file._runner_template,
-    )
 
     archive = outputs.archive(
         actions = actions,
@@ -405,6 +408,15 @@ def _macos_application_impl(ctx):
         predeclared_outputs = predeclared_outputs,
         rule_descriptor = rule_descriptor,
     )
+    dsyms = outputs.dsyms(processor_result = processor_result)
+
+    run_support.register_macos_executable(
+        actions = actions,
+        archive = archive,
+        bundle_name = bundle_name,
+        output = executable,
+        runner_template = ctx.file._runner_template,
+    )
 
     return [
         coverage_common.instrumented_files_info(ctx, dependency_attributes = ["deps"]),
@@ -413,9 +425,10 @@ def _macos_application_impl(ctx):
             files = processor_result.output_files,
             runfiles = ctx.runfiles(
                 files = [archive],
+                transitive_files = dsyms,
             ),
         ),
-        MacosApplicationBundleInfo(),
+        new_macosapplicationbundleinfo(),
         OutputGroupInfo(
             **outputs.merge_output_groups(
                 link_result.output_groups,
@@ -441,12 +454,18 @@ def _macos_bundle_impl(ctx):
     actions = ctx.actions
     apple_mac_toolchain_info = ctx.attr._mac_toolchain[AppleMacToolsToolchainInfo]
     apple_xplat_toolchain_info = ctx.attr._xplat_toolchain[AppleXPlatToolsToolchainInfo]
-    bundle_id = ctx.attr.bundle_id
     bundle_name, bundle_extension = bundling_support.bundle_full_name(
         custom_bundle_extension = ctx.attr.bundle_extension,
         custom_bundle_name = ctx.attr.bundle_name,
         label_name = ctx.label.name,
         rule_descriptor = rule_descriptor,
+    )
+    bundle_id = bundling_support.bundle_full_id(
+        bundle_id = ctx.attr.bundle_id,
+        bundle_id_suffix = ctx.attr.bundle_id_suffix,
+        bundle_name = bundle_name,
+        suffix_default = ctx.attr._bundle_id_suffix_default,
+        shared_capabilities = ctx.attr.shared_capabilities,
     )
     executable_name = ctx.attr.executable_name
     features = features_support.compute_enabled_features(
@@ -574,6 +593,9 @@ def _macos_bundle_impl(ctx):
             label_name = label.name,
             linkmaps = debug_outputs.linkmaps,
             platform_prerequisites = platform_prerequisites,
+            resolved_plisttool = apple_mac_toolchain_info.resolved_plisttool,
+            rule_label = label,
+            version = ctx.attr.version,
         ),
         partials.embedded_bundles_partial(
             platform_prerequisites = platform_prerequisites,
@@ -643,7 +665,7 @@ def _macos_bundle_impl(ctx):
         DefaultInfo(
             files = processor_result.output_files,
         ),
-        MacosBundleBundleInfo(),
+        new_macosbundlebundleinfo(),
         OutputGroupInfo(
             **outputs.merge_output_groups(
                 link_result.output_groups,
@@ -655,20 +677,31 @@ def _macos_bundle_impl(ctx):
     ] + processor_result.providers
 
 def _macos_extension_impl(ctx):
-    """Experimental implementation of macos_extension."""
+    """Implementation of macos_extension."""
+
+    product_type = apple_product_type.app_extension
+    if ctx.attr.extensionkit_extension:
+        product_type = apple_product_type.extensionkit_extension
+
     rule_descriptor = rule_support.rule_descriptor(
         platform_type = ctx.attr.platform_type,
-        product_type = apple_product_type.app_extension,
+        product_type = product_type,
     )
 
     actions = ctx.actions
     apple_mac_toolchain_info = ctx.attr._mac_toolchain[AppleMacToolsToolchainInfo]
     apple_xplat_toolchain_info = ctx.attr._xplat_toolchain[AppleXPlatToolsToolchainInfo]
-    bundle_id = ctx.attr.bundle_id
     bundle_name, bundle_extension = bundling_support.bundle_full_name(
         custom_bundle_name = ctx.attr.bundle_name,
         label_name = ctx.label.name,
         rule_descriptor = rule_descriptor,
+    )
+    bundle_id = bundling_support.bundle_full_id(
+        bundle_id = ctx.attr.bundle_id,
+        bundle_id_suffix = ctx.attr.bundle_id_suffix,
+        bundle_name = bundle_name,
+        suffix_default = ctx.attr._bundle_id_suffix_default,
+        shared_capabilities = ctx.attr.shared_capabilities,
     )
     executable_name = ctx.attr.executable_name
     features = features_support.compute_enabled_features(
@@ -748,6 +781,14 @@ def _macos_extension_impl(ctx):
         rule_descriptor = rule_descriptor,
     )
 
+    embedded_bundles_args = {}
+    if rule_descriptor.product_type == apple_product_type.app_extension:
+        embedded_bundles_args["plugins"] = [archive]
+    elif rule_descriptor.product_type == apple_product_type.extensionkit_extension:
+        embedded_bundles_args["extensions"] = [archive]
+    else:
+        fail("Internal Error: Unexpectedly found product_type " + rule_descriptor.product_type)
+
     processor_partials = [
         partials.apple_bundle_info_partial(
             actions = actions,
@@ -805,11 +846,14 @@ def _macos_extension_impl(ctx):
             label_name = label.name,
             linkmaps = debug_outputs.linkmaps,
             platform_prerequisites = platform_prerequisites,
+            resolved_plisttool = apple_mac_toolchain_info.resolved_plisttool,
+            rule_label = label,
+            version = ctx.attr.version,
         ),
         partials.embedded_bundles_partial(
             embeddable_targets = ctx.attr.frameworks,
             platform_prerequisites = platform_prerequisites,
-            plugins = [archive],
+            **embedded_bundles_args
         ),
         partials.macos_additional_contents_partial(
             additional_contents = ctx.attr.additional_contents,
@@ -822,6 +866,7 @@ def _macos_extension_impl(ctx):
             bundle_name = bundle_name,
             environment_plist = ctx.file._environment_plist,
             executable_name = executable_name,
+            extensionkit_keys_required = ctx.attr.extensionkit_extension,
             launch_storyboard = None,
             platform_prerequisites = platform_prerequisites,
             resource_deps = resource_deps,
@@ -885,11 +930,11 @@ def _macos_extension_impl(ctx):
         DefaultInfo(
             files = processor_result.output_files,
         ),
-        MacosExtensionBundleInfo(),
         apple_common.new_executable_binary_provider(
             binary = binary_artifact,
             objc = link_result.objc,
         ),
+        new_macosextensionbundleinfo(),
         OutputGroupInfo(
             **outputs.merge_output_groups(
                 link_result.output_groups,
@@ -910,11 +955,17 @@ def _macos_quick_look_plugin_impl(ctx):
     actions = ctx.actions
     apple_mac_toolchain_info = ctx.attr._mac_toolchain[AppleMacToolsToolchainInfo]
     apple_xplat_toolchain_info = ctx.attr._xplat_toolchain[AppleXPlatToolsToolchainInfo]
-    bundle_id = ctx.attr.bundle_id
     bundle_name, bundle_extension = bundling_support.bundle_full_name(
         custom_bundle_name = ctx.attr.bundle_name,
         label_name = ctx.label.name,
         rule_descriptor = rule_descriptor,
+    )
+    bundle_id = bundling_support.bundle_full_id(
+        bundle_id = ctx.attr.bundle_id,
+        bundle_id_suffix = ctx.attr.bundle_id_suffix,
+        bundle_name = bundle_name,
+        suffix_default = ctx.attr._bundle_id_suffix_default,
+        shared_capabilities = ctx.attr.shared_capabilities,
     )
     executable_name = ctx.attr.executable_name
     features = features_support.compute_enabled_features(
@@ -1048,6 +1099,9 @@ def _macos_quick_look_plugin_impl(ctx):
             label_name = label.name,
             linkmaps = debug_outputs.linkmaps,
             platform_prerequisites = platform_prerequisites,
+            resolved_plisttool = apple_mac_toolchain_info.resolved_plisttool,
+            rule_label = label,
+            version = ctx.attr.version,
         ),
         partials.embedded_bundles_partial(
             frameworks = [archive],
@@ -1123,7 +1177,7 @@ def _macos_quick_look_plugin_impl(ctx):
 
     return [
         DefaultInfo(files = processor_result.output_files),
-        MacosQuickLookPluginBundleInfo(),
+        new_macosquicklookpluginbundleinfo(),
         OutputGroupInfo(
             **outputs.merge_output_groups(
                 link_result.output_groups,
@@ -1144,11 +1198,17 @@ def _macos_kernel_extension_impl(ctx):
     actions = ctx.actions
     apple_mac_toolchain_info = ctx.attr._mac_toolchain[AppleMacToolsToolchainInfo]
     apple_xplat_toolchain_info = ctx.attr._xplat_toolchain[AppleXPlatToolsToolchainInfo]
-    bundle_id = ctx.attr.bundle_id
     bundle_name, bundle_extension = bundling_support.bundle_full_name(
         custom_bundle_name = ctx.attr.bundle_name,
         label_name = ctx.label.name,
         rule_descriptor = rule_descriptor,
+    )
+    bundle_id = bundling_support.bundle_full_id(
+        bundle_id = ctx.attr.bundle_id,
+        bundle_id_suffix = ctx.attr.bundle_id_suffix,
+        bundle_name = bundle_name,
+        suffix_default = ctx.attr._bundle_id_suffix_default,
+        shared_capabilities = ctx.attr.shared_capabilities,
     )
     executable_name = ctx.attr.executable_name
     features = features_support.compute_enabled_features(
@@ -1280,6 +1340,9 @@ def _macos_kernel_extension_impl(ctx):
             label_name = label.name,
             linkmaps = debug_outputs.linkmaps,
             platform_prerequisites = platform_prerequisites,
+            resolved_plisttool = apple_mac_toolchain_info.resolved_plisttool,
+            rule_label = label,
+            version = ctx.attr.version,
         ),
         partials.embedded_bundles_partial(
             platform_prerequisites = platform_prerequisites,
@@ -1358,7 +1421,7 @@ def _macos_kernel_extension_impl(ctx):
         DefaultInfo(
             files = processor_result.output_files,
         ),
-        MacosKernelExtensionBundleInfo(),
+        new_macoskernelextensionbundleinfo(),
         OutputGroupInfo(
             **outputs.merge_output_groups(
                 link_result.output_groups,
@@ -1379,11 +1442,17 @@ def _macos_spotlight_importer_impl(ctx):
     actions = ctx.actions
     apple_mac_toolchain_info = ctx.attr._mac_toolchain[AppleMacToolsToolchainInfo]
     apple_xplat_toolchain_info = ctx.attr._xplat_toolchain[AppleXPlatToolsToolchainInfo]
-    bundle_id = ctx.attr.bundle_id
     bundle_name, bundle_extension = bundling_support.bundle_full_name(
         custom_bundle_name = ctx.attr.bundle_name,
         label_name = ctx.label.name,
         rule_descriptor = rule_descriptor,
+    )
+    bundle_id = bundling_support.bundle_full_id(
+        bundle_id = ctx.attr.bundle_id,
+        bundle_id_suffix = ctx.attr.bundle_id_suffix,
+        bundle_name = bundle_name,
+        suffix_default = ctx.attr._bundle_id_suffix_default,
+        shared_capabilities = ctx.attr.shared_capabilities,
     )
     executable_name = ctx.attr.executable_name
     features = features_support.compute_enabled_features(
@@ -1502,6 +1571,9 @@ def _macos_spotlight_importer_impl(ctx):
             label_name = label.name,
             linkmaps = debug_outputs.linkmaps,
             platform_prerequisites = platform_prerequisites,
+            resolved_plisttool = apple_mac_toolchain_info.resolved_plisttool,
+            rule_label = label,
+            version = ctx.attr.version,
         ),
         partials.embedded_bundles_partial(
             platform_prerequisites = platform_prerequisites,
@@ -1579,7 +1651,7 @@ def _macos_spotlight_importer_impl(ctx):
         DefaultInfo(
             files = processor_result.output_files,
         ),
-        MacosSpotlightImporterBundleInfo(),
+        new_macosspotlightimporterbundleinfo(),
         OutputGroupInfo(
             **outputs.merge_output_groups(
                 link_result.output_groups,
@@ -1600,11 +1672,17 @@ def _macos_xpc_service_impl(ctx):
     actions = ctx.actions
     apple_mac_toolchain_info = ctx.attr._mac_toolchain[AppleMacToolsToolchainInfo]
     apple_xplat_toolchain_info = ctx.attr._xplat_toolchain[AppleXPlatToolsToolchainInfo]
-    bundle_id = ctx.attr.bundle_id
     bundle_name, bundle_extension = bundling_support.bundle_full_name(
         custom_bundle_name = ctx.attr.bundle_name,
         label_name = ctx.label.name,
         rule_descriptor = rule_descriptor,
+    )
+    bundle_id = bundling_support.bundle_full_id(
+        bundle_id = ctx.attr.bundle_id,
+        bundle_id_suffix = ctx.attr.bundle_id_suffix,
+        bundle_name = bundle_name,
+        suffix_default = ctx.attr._bundle_id_suffix_default,
+        shared_capabilities = ctx.attr.shared_capabilities,
     )
     executable_name = ctx.attr.executable_name
     features = features_support.compute_enabled_features(
@@ -1723,6 +1801,9 @@ def _macos_xpc_service_impl(ctx):
             label_name = label.name,
             linkmaps = debug_outputs.linkmaps,
             platform_prerequisites = platform_prerequisites,
+            resolved_plisttool = apple_mac_toolchain_info.resolved_plisttool,
+            rule_label = label,
+            version = ctx.attr.version,
         ),
         partials.embedded_bundles_partial(
             platform_prerequisites = platform_prerequisites,
@@ -1800,7 +1881,7 @@ def _macos_xpc_service_impl(ctx):
         DefaultInfo(
             files = processor_result.output_files,
         ),
-        MacosXPCServiceBundleInfo(),
+        new_macosxpcservicebundleinfo(),
         OutputGroupInfo(
             **outputs.merge_output_groups(
                 link_result.output_groups,
@@ -1869,6 +1950,9 @@ def _macos_command_line_application_impl(ctx):
         label_name = label.name,
         linkmaps = debug_outputs.linkmaps,
         platform_prerequisites = platform_prerequisites,
+        resolved_plisttool = apple_mac_toolchain_info.resolved_plisttool,
+        rule_label = label,
+        version = ctx.attr.version,
     )
 
     processor_result = processor.process(
@@ -1916,8 +2000,10 @@ def _macos_command_line_application_impl(ctx):
     if clang_rt_dylibs.should_package_clang_runtime(features = features):
         runfiles = clang_rt_dylibs.get_from_toolchain(ctx)
 
+    dsyms = outputs.dsyms(processor_result = processor_result)
+
     return [
-        AppleBinaryInfo(
+        new_applebinaryinfo(
             binary = output_file,
             infoplist = infoplist,
             product_type = rule_descriptor.product_type,
@@ -1928,7 +2014,10 @@ def _macos_command_line_application_impl(ctx):
                 depset([output_file]),
                 processor_result.output_files,
             ]),
-            runfiles = ctx.runfiles(runfiles),
+            runfiles = ctx.runfiles(
+                files = runfiles,
+                transitive_files = dsyms,
+            ),
         ),
         OutputGroupInfo(
             **outputs.merge_output_groups(
@@ -2004,6 +2093,9 @@ def _macos_dylib_impl(ctx):
         label_name = label.name,
         linkmaps = debug_outputs.linkmaps,
         platform_prerequisites = platform_prerequisites,
+        resolved_plisttool = apple_mac_toolchain_info.resolved_plisttool,
+        rule_label = label,
+        version = ctx.attr.version,
     )
 
     processor_result = processor.process(
@@ -2048,7 +2140,7 @@ def _macos_dylib_impl(ctx):
     infoplist = infoplists[0] if infoplists else None
 
     return [
-        AppleBinaryInfo(
+        new_applebinaryinfo(
             binary = output_file,
             infoplist = infoplist,
             product_type = rule_descriptor.product_type,
@@ -2091,25 +2183,23 @@ simple command line tool as a standalone binary, use
             is_test_supporting_rule = False,
             requires_legacy_cc_toolchain = True,
         ),
-        rule_attrs.bundle_id_attrs(is_mandatory = True),
         rule_attrs.cc_toolchain_forwarder_attrs(
             deps_cfg = transition_support.apple_platform_split_transition,
         ),
         rule_attrs.common_bundle_attrs(
             deps_cfg = transition_support.apple_platform_split_transition,
         ),
-        rule_attrs.common_tool_attrs,
+        rule_attrs.common_tool_attrs(),
         rule_attrs.device_family_attrs(
             allowed_families = rule_attrs.defaults.allowed_families.macos,
             is_mandatory = False,
         ),
-        rule_attrs.entitlements_attrs,
         rule_attrs.infoplist_attrs(),
         rule_attrs.platform_attrs(
             add_environment_plist = True,
             platform_type = "macos",
         ),
-        rule_attrs.provisioning_profile_attrs(
+        rule_attrs.signing_attrs(
             profile_extension = ".provisionprofile",
         ),
         {
@@ -2177,22 +2267,21 @@ macos_bundle = rule_factory.create_apple_rule(
             is_test_supporting_rule = False,
             requires_legacy_cc_toolchain = True,
         ),
-        rule_attrs.bundle_id_attrs(is_mandatory = True),
         rule_attrs.common_bundle_attrs(
             deps_cfg = transition_support.apple_platform_split_transition,
         ),
-        rule_attrs.common_tool_attrs,
+        rule_attrs.common_tool_attrs(),
         rule_attrs.device_family_attrs(
             allowed_families = rule_attrs.defaults.allowed_families.macos,
             is_mandatory = False,
         ),
-        rule_attrs.entitlements_attrs,
         rule_attrs.infoplist_attrs(),
         rule_attrs.platform_attrs(
             add_environment_plist = True,
             platform_type = "macos",
         ),
-        rule_attrs.provisioning_profile_attrs(
+        rule_attrs.signing_attrs(
+            default_bundle_id_suffix = bundle_id_suffix_default.bundle_name,
             profile_extension = ".provisionprofile",
         ),
         {
@@ -2245,22 +2334,22 @@ point (typically expressed through Swift's `@main` attribute).""",
             is_test_supporting_rule = False,
             requires_legacy_cc_toolchain = True,
         ),
-        rule_attrs.bundle_id_attrs(is_mandatory = True),
         rule_attrs.common_bundle_attrs(
             deps_cfg = transition_support.apple_platform_split_transition,
         ),
-        rule_attrs.common_tool_attrs,
+        rule_attrs.common_tool_attrs(),
         rule_attrs.device_family_attrs(
             allowed_families = rule_attrs.defaults.allowed_families.macos,
             is_mandatory = False,
         ),
-        rule_attrs.entitlements_attrs,
+        rule_attrs.extensionkit_attrs(),
         rule_attrs.infoplist_attrs(),
         rule_attrs.platform_attrs(
             add_environment_plist = True,
             platform_type = "macos",
         ),
-        rule_attrs.provisioning_profile_attrs(
+        rule_attrs.signing_attrs(
+            default_bundle_id_suffix = bundle_id_suffix_default.bundle_name,
             profile_extension = ".provisionprofile",
         ),
         {
@@ -2301,22 +2390,20 @@ macos_quick_look_plugin = rule_factory.create_apple_rule(
             is_test_supporting_rule = False,
             requires_legacy_cc_toolchain = True,
         ),
-        rule_attrs.bundle_id_attrs(is_mandatory = True),
         rule_attrs.common_bundle_attrs(
             deps_cfg = transition_support.apple_platform_split_transition,
         ),
-        rule_attrs.common_tool_attrs,
+        rule_attrs.common_tool_attrs(),
         rule_attrs.device_family_attrs(
             allowed_families = rule_attrs.defaults.allowed_families.macos,
             is_mandatory = False,
         ),
-        rule_attrs.entitlements_attrs,
         rule_attrs.infoplist_attrs(),
         rule_attrs.platform_attrs(
             add_environment_plist = True,
             platform_type = "macos",
         ),
-        rule_attrs.provisioning_profile_attrs(
+        rule_attrs.signing_attrs(
             profile_extension = ".provisionprofile",
         ),
         {
@@ -2350,22 +2437,20 @@ macos_kernel_extension = rule_factory.create_apple_rule(
             is_test_supporting_rule = False,
             requires_legacy_cc_toolchain = True,
         ),
-        rule_attrs.bundle_id_attrs(is_mandatory = True),
         rule_attrs.common_bundle_attrs(
             deps_cfg = transition_support.apple_platform_split_transition,
         ),
-        rule_attrs.common_tool_attrs,
+        rule_attrs.common_tool_attrs(),
         rule_attrs.device_family_attrs(
             allowed_families = rule_attrs.defaults.allowed_families.macos,
             is_mandatory = False,
         ),
-        rule_attrs.entitlements_attrs,
         rule_attrs.infoplist_attrs(),
         rule_attrs.platform_attrs(
             add_environment_plist = True,
             platform_type = "macos",
         ),
-        rule_attrs.provisioning_profile_attrs(
+        rule_attrs.signing_attrs(
             profile_extension = ".provisionprofile",
         ),
         {
@@ -2398,22 +2483,20 @@ macos_spotlight_importer = rule_factory.create_apple_rule(
             is_test_supporting_rule = False,
             requires_legacy_cc_toolchain = True,
         ),
-        rule_attrs.bundle_id_attrs(is_mandatory = True),
         rule_attrs.common_bundle_attrs(
             deps_cfg = transition_support.apple_platform_split_transition,
         ),
-        rule_attrs.common_tool_attrs,
+        rule_attrs.common_tool_attrs(),
         rule_attrs.device_family_attrs(
             allowed_families = rule_attrs.defaults.allowed_families.macos,
             is_mandatory = False,
         ),
-        rule_attrs.entitlements_attrs,
         rule_attrs.infoplist_attrs(),
         rule_attrs.platform_attrs(
             add_environment_plist = True,
             platform_type = "macos",
         ),
-        rule_attrs.provisioning_profile_attrs(
+        rule_attrs.signing_attrs(
             profile_extension = ".provisionprofile",
         ),
         {
@@ -2446,22 +2529,20 @@ macos_xpc_service = rule_factory.create_apple_rule(
             is_test_supporting_rule = False,
             requires_legacy_cc_toolchain = True,
         ),
-        rule_attrs.bundle_id_attrs(is_mandatory = True),
         rule_attrs.common_bundle_attrs(
             deps_cfg = transition_support.apple_platform_split_transition,
         ),
-        rule_attrs.common_tool_attrs,
+        rule_attrs.common_tool_attrs(),
         rule_attrs.device_family_attrs(
             allowed_families = rule_attrs.defaults.allowed_families.macos,
             is_mandatory = False,
         ),
-        rule_attrs.entitlements_attrs,
         rule_attrs.infoplist_attrs(),
         rule_attrs.platform_attrs(
             add_environment_plist = True,
             platform_type = "macos",
         ),
-        rule_attrs.provisioning_profile_attrs(
+        rule_attrs.signing_attrs(
             profile_extension = ".provisionprofile",
         ),
         {
@@ -2503,16 +2584,16 @@ Targets created with `macos_command_line_application` can be executed using
             is_test_supporting_rule = False,
             requires_legacy_cc_toolchain = True,
         ),
-        rule_attrs.bundle_id_attrs(is_mandatory = False),
-        rule_attrs.common_tool_attrs,
+        rule_attrs.common_tool_attrs(),
+        rule_attrs.custom_transition_allowlist_attr(),
         rule_attrs.platform_attrs(
             add_environment_plist = True,
             platform_type = "macos",
         ),
-        rule_attrs.provisioning_profile_attrs(
+        rule_attrs.signing_attrs(
+            supports_capabilities = False,
             profile_extension = ".provisionprofile",
         ),
-        rule_attrs.custom_transition_allowlist_attr,
         {
             "infoplists": attr.label_list(
                 allow_files = [".plist"],
@@ -2558,14 +2639,14 @@ macos_dylib = rule_factory.create_apple_rule(
             is_test_supporting_rule = False,
             requires_legacy_cc_toolchain = True,
         ),
-        rule_attrs.bundle_id_attrs(is_mandatory = False),
-        rule_attrs.common_tool_attrs,
-        rule_attrs.custom_transition_allowlist_attr,
+        rule_attrs.common_tool_attrs(),
+        rule_attrs.custom_transition_allowlist_attr(),
         rule_attrs.platform_attrs(
             add_environment_plist = True,
             platform_type = "macos",
         ),
-        rule_attrs.provisioning_profile_attrs(
+        rule_attrs.signing_attrs(
+            supports_capabilities = False,
             profile_extension = ".provisionprofile",
         ),
         {
@@ -2743,6 +2824,9 @@ def _macos_framework_impl(ctx):
             label_name = label.name,
             linkmaps = debug_outputs.linkmaps,
             platform_prerequisites = platform_prerequisites,
+            resolved_plisttool = apple_mac_toolchain_info.resolved_plisttool,
+            rule_label = label,
+            version = ctx.attr.version,
         ),
         partials.embedded_bundles_partial(
             frameworks = [archive_for_embedding],
@@ -2827,8 +2911,8 @@ def _macos_framework_impl(ctx):
 
     return [
         DefaultInfo(files = processor_result.output_files),
-        AppleFrameworkBundleInfo(),
         MacosFrameworkBundleInfo(),
+        new_appleframeworkbundleinfo(),
         OutputGroupInfo(
             **outputs.merge_output_groups(
                 link_result.output_groups,
@@ -3009,6 +3093,9 @@ def _macos_dynamic_framework_impl(ctx):
             label_name = label.name,
             linkmaps = debug_outputs.linkmaps,
             platform_prerequisites = platform_prerequisites,
+            resolved_plisttool = apple_mac_toolchain_info.resolved_plisttool,
+            rule_label = label,
+            version = ctx.attr.version,
         ),
         partials.embedded_bundles_partial(
             frameworks = [archive_for_embedding],
@@ -3284,11 +3371,10 @@ of those `macos_application` and/or `macos_extension` rules.""",
             is_test_supporting_rule = False,
             requires_legacy_cc_toolchain = True,
         ),
-        rule_attrs.bundle_id_attrs(is_mandatory = True),
         rule_attrs.common_bundle_attrs(
             deps_cfg = transition_support.apple_platform_split_transition,
         ),
-        rule_attrs.common_tool_attrs,
+        rule_attrs.common_tool_attrs(),
         rule_attrs.device_family_attrs(
             allowed_families = rule_attrs.defaults.allowed_families.macos,
         ),
@@ -3297,7 +3383,10 @@ of those `macos_application` and/or `macos_extension` rules.""",
             add_environment_plist = True,
             platform_type = "macos",
         ),
-        rule_attrs.provisioning_profile_attrs(),
+        rule_attrs.signing_attrs(
+            default_bundle_id_suffix = bundle_id_suffix_default.bundle_name,
+            supports_capabilities = False,
+        ),
         {
             "bundle_only": attr.bool(
                 default = False,
@@ -3344,11 +3433,10 @@ macos_dynamic_framework = rule_factory.create_apple_rule(
             is_test_supporting_rule = False,
             requires_legacy_cc_toolchain = True,
         ),
-        rule_attrs.bundle_id_attrs(is_mandatory = True),
         rule_attrs.common_bundle_attrs(
             deps_cfg = transition_support.apple_platform_split_transition,
         ),
-        rule_attrs.common_tool_attrs,
+        rule_attrs.common_tool_attrs(),
         rule_attrs.device_family_attrs(
             allowed_families = rule_attrs.defaults.allowed_families.macos,
         ),
@@ -3357,7 +3445,10 @@ macos_dynamic_framework = rule_factory.create_apple_rule(
             add_environment_plist = True,
             platform_type = "macos",
         ),
-        rule_attrs.provisioning_profile_attrs(),
+        rule_attrs.signing_attrs(
+            default_bundle_id_suffix = bundle_id_suffix_default.bundle_name,
+            supports_capabilities = False,
+        ),
         {
             "bundle_only": attr.bool(
                 default = False,
@@ -3434,7 +3525,7 @@ i.e. `--features=-swift.no_generated_header`).""",
     predeclared_outputs = {"archive": "%{name}.zip"},
     attrs = [
         rule_attrs.binary_linking_attrs(
-            deps_cfg = transition_support.apple_platform_split_transition,
+            deps_cfg = _STATIC_FRAMEWORK_DEPS_CFG,
             extra_deps_aspects = [
                 apple_resource_aspect,
                 framework_provider_aspect,
@@ -3444,9 +3535,9 @@ i.e. `--features=-swift.no_generated_header`).""",
         ),
         rule_attrs.cc_toolchain_forwarder_attrs(deps_cfg = _STATIC_FRAMEWORK_DEPS_CFG),
         rule_attrs.common_bundle_attrs(
-            deps_cfg = transition_support.apple_platform_split_transition,
+            deps_cfg = _STATIC_FRAMEWORK_DEPS_CFG,
         ),
-        rule_attrs.common_tool_attrs,
+        rule_attrs.common_tool_attrs(),
         rule_attrs.device_family_attrs(
             allowed_families = rule_attrs.defaults.allowed_families.macos,
         ),

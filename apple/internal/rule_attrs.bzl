@@ -23,6 +23,10 @@ load(
     "apple_toolchain_utils",
 )
 load(
+    "@build_bazel_rules_apple//apple/internal:bundling_support.bzl",
+    "bundle_id_suffix_default",
+)
+load(
     "@build_bazel_rules_apple//apple/internal/aspects:app_intents_aspect.bzl",
     "app_intents_aspect",
 )
@@ -48,9 +52,11 @@ load(
 )
 load(
     "@build_bazel_rules_apple//apple:providers.bzl",
+    "AppleBaseBundleIdInfo",
     "AppleBundleVersionInfo",
     "ApplePlatformInfo",
     "AppleResourceBundleInfo",
+    "AppleSharedCapabilityInfo",
 )
 load(
     "@build_bazel_rules_swift//swift:swift.bzl",
@@ -61,32 +67,28 @@ load(
     "dicts",
 )
 
-# Private attributes on all rules; these should be included in all rule attributes.
-_COMMON_ATTRS = dicts.add(
-    {
-        "_grep_includes": attr.label(
-            cfg = "exec",
-            allow_single_file = True,
-            executable = True,
-            default = Label("@bazel_tools//tools/cpp:grep-includes"),
+def _common_attrs():
+    """Private attributes on all rules; these should be included in all rule attributes."""
+    return dicts.add(
+        {
+        },
+        apple_support.action_required_attrs(),
+    )
+
+def _common_tool_attrs():
+    """Returns the set of attributes to support rules that need rules_apple tools and toolchains."""
+    return dicts.add(
+        _common_attrs(),
+        apple_toolchain_utils.shared_attrs(),
+    )
+
+def _custom_transition_allowlist_attr():
+    """Returns the required attribute to use Starlark defined custom transitions."""
+    return {
+        "_allowlist_function_transition": attr.label(
+            default = "@bazel_tools//tools/allowlists/function_transition_allowlist",
         ),
-    },
-    apple_support.action_required_attrs(),
-)
-
-# Returns the common set of attributes to support rules that leverage rules_apple tools and their
-# associated toolchains.
-_COMMON_TOOL_ATTRS = dicts.add(
-    _COMMON_ATTRS,
-    apple_toolchain_utils.shared_attrs(),
-)
-
-# Returns required attribute to use Starlark defined custom transitions
-_CUSTOM_TRANSITION_ALLOWLIST_ATTR = {
-    "_allowlist_function_transition": attr.label(
-        default = "@bazel_tools//tools/allowlists/function_transition_allowlist",
-    ),
-}
+    }
 
 def _app_intents_attrs(*, deps_cfg):
     """Returns a dictionary with the attribute for Apple platform rules supporting AppIntents.
@@ -135,7 +137,7 @@ def _common_linking_api_attrs(*, deps_cfg):
             To satisfy native Bazel linking prerequisites, `deps` and this `deps_cfg` attribute must
             use the same transition.
     """
-    return dicts.add(_COMMON_ATTRS, {
+    return dicts.add(_common_attrs(), {
         # TODO(b/251837356): Replace with the _cc_toolchain_forwarder attr when native code doesn't
         # require that this attr be called `_child_configuration_dummy` in Bazel linking APIs.
         "_child_configuration_dummy": attr.label(
@@ -368,19 +370,20 @@ binaries/libraries will be created combining all architectures specified by
         })
     return platform_attrs
 
-# Attributes required for rules that are built to support test rules like ios_unit_test.
-_TEST_BUNDLE_ATTRS = {
-    # We need to add an explicit output attribute so that the output file name from the test
-    # bundle target matches the test name, otherwise, it we'd be breaking the assumption that
-    # ios_unit_test(name = "Foo") creates a :Foo.zip target.
-    # This is an implementation detail attribute, so it's not documented on purpose.
-    "test_bundle_output": attr.output(mandatory = True),
-    "_swizzle_absolute_xcttestsourcelocation": attr.label(
-        default = Label(
-            "@build_bazel_apple_support//lib:swizzle_absolute_xcttestsourcelocation",
+def _test_bundle_attrs():
+    """Attributes required for rules that are built to support test rules like ios_unit_test."""
+    return {
+        # We need to add an explicit output attribute so that the output file name from the test
+        # bundle target matches the test name, otherwise, it we'd be breaking the assumption that
+        # ios_unit_test(name = "Foo") creates a :Foo.zip target.
+        # This is an implementation detail attribute, so it's not documented on purpose.
+        "test_bundle_output": attr.output(mandatory = True),
+        "_swizzle_absolute_xcttestsourcelocation": attr.label(
+            default = Label(
+                "@build_bazel_apple_support//lib:swizzle_absolute_xcttestsourcelocation",
+            ),
         ),
-    ),
-}
+    }
 
 def _test_host_attrs(
         *,
@@ -404,21 +407,126 @@ def _test_host_attrs(
             mandatory = is_mandatory,
             providers = providers,
         ),
+        "test_host_is_bundle_loader": attr.bool(
+            default = True,
+            doc = """
+Whether the 'test_host' should be used as the -bundle_loader to allow testing
+the symbols from the test host app
+""",
+        ),
     }
 
-def _bundle_id_attrs(*, is_mandatory):
+def _signing_attrs(
+        *,
+        default_bundle_id_suffix = bundle_id_suffix_default.no_suffix,
+        supports_capabilities = True,
+        profile_extension = ".mobileprovision"):
     """Returns the attribute required to support custom bundle identifiers for the given target.
 
     Args:
-        is_mandatory: Bool to indicate if the bundle_id should be marked as mandatory such that the
-            bundle_id must be given explicitly by the user.
+        default_bundle_id_suffix: String. A value from the bundle_id_suffix_default struct that will
+            be used to indicate the default source for the bundle ID suffix, if one is composed from
+            a base bundle ID.
+        supports_capabilities: Boolean. Indicates if the attributes generated should support
+            entitlements and capabilities for code signing.
+        profile_extension: A file extension that will be required for the provisioning profile.
+            Optional. This is `.mobileprovision` by default.
     """
-    return {
+    signing_attrs = {
+        "_bundle_id_suffix_default": attr.string(
+            default = default_bundle_id_suffix,
+            doc = """
+An internally-defined string to indicate the default suffix of the bundle ID, independent from the
+user-specified `bundle_id_suffix`. This acts as a constraint to force the _signing_attrs-assigned
+bundle_id_suffix_default arg to be sourced from a common struct, and allows for better handling
+special cases like sourcing the bundle name or handling a no-suffix case.
+""",
+            values = [
+                bundle_id_suffix_default.no_suffix,
+                bundle_id_suffix_default.bundle_name,
+                bundle_id_suffix_default.watchos_app,
+                bundle_id_suffix_default.watchos2_app_extension,
+            ],
+        ),
         "bundle_id": attr.string(
-            mandatory = is_mandatory,
-            doc = "The bundle ID (reverse-DNS path followed by app name) for this target.",
+            doc = """
+The bundle ID (reverse-DNS path followed by app name) for this target. Only use this attribute if
+the bundle ID is not intended to be composed through an assigned base bundle ID rule found within
+`signed_capabilities`.
+""" if supports_capabilities else """
+The bundle ID (reverse-DNS path followed by app name) for this target. Only use this attribute if
+the bundle ID is not intended to be composed through an assigned base bundle ID referenced by
+`base_bundle_id`.
+""",
+        ),
+        "bundle_id_suffix": attr.string(
+            default = default_bundle_id_suffix,
+            doc = """
+A string to act as the suffix of the composed bundle ID. If this target's bundle ID is composed from
+a base bundle ID rule found within `signed_capabilities`, then this string will be appended to the
+end of the bundle ID following a "." separator.
+""" if supports_capabilities else """
+A string to act as the suffix of the composed bundle ID. If this target's bundle ID is composed from
+the base bundle ID rule referenced by `base_bundle_id`, then this string will be appended to the end
+of the bundle ID following a "." separator.
+""",
+        ),
+        "provisioning_profile": attr.label(
+            allow_single_file = [profile_extension],
+            doc = """
+The provisioning profile (`{profile_extension}` file) to use when creating the bundle. This value is
+optional for simulator builds as the simulator doesn't fully enforce entitlements, but is
+required for device builds.
+""".format(profile_extension = profile_extension),
         ),
     }
+    if supports_capabilities:
+        signing_attrs = dicts.add(signing_attrs, {
+            "entitlements": attr.label(
+                allow_single_file = True,
+                doc = """
+The entitlements file required for device builds of this target. If absent, the default entitlements
+from the provisioning profile will be used.
+
+The following variables are substituted in the entitlements file: `$(CFBundleIdentifier)` with the
+bundle ID of the application and `$(AppIdentifierPrefix)` with the value of the
+`ApplicationIdentifierPrefix` key from the target's provisioning profile.
+""",
+            ),
+            "entitlements_validation": attr.string(
+                default = entitlements_validation_mode.loose,
+                doc = """
+An `entitlements_validation_mode` to control the validation of the requested entitlements against
+the provisioning profile to ensure they are supported.
+""",
+                values = [
+                    entitlements_validation_mode.error,
+                    entitlements_validation_mode.warn,
+                    entitlements_validation_mode.loose,
+                    entitlements_validation_mode.skip,
+                ],
+            ),
+            "shared_capabilities": attr.label_list(
+                providers = [[AppleSharedCapabilityInfo]],
+                doc = """
+A list of shared `apple_capability_set` rules to represent the capabilities that a code sign aware
+Apple bundle rule output should have. These can define the formal prefix for the target's
+`bundle_id` and can further be merged with information provided by `entitlements`, if defined by any
+capabilities found within the `apple_capability_set`.
+""",
+            ),
+        })
+    else:
+        signing_attrs = dicts.add(signing_attrs, {
+            "base_bundle_id": attr.label(
+                providers = [[AppleBaseBundleIdInfo]],
+                doc = """
+The base bundle ID rule to dictate the form that a given bundle rule's bundle ID prefix should take.
+""",
+            ),
+        })
+
+    return signing_attrs
 
 def _infoplist_attrs(*, default_infoplist = None):
     """Returns the attributes required to support a root Info.plist for the given target.
@@ -447,26 +555,8 @@ for what is supported.
         ),
     }
 
-def _provisioning_profile_attrs(*, profile_extension = ".mobileprovision"):
-    """Returns the attribute required to assign a custom provisioning profile for the given target.
-
-    Args:
-        profile_extension: A file extension that will be required for the provisioning profile.
-            Optional. This is `.mobileprovision` by default.
-    """
-    return {
-        "provisioning_profile": attr.label(
-            allow_single_file = [profile_extension],
-            doc = """
-The provisioning profile (`{profile_extension}` file) to use when creating the bundle. This value is
-optional for simulator builds as the simulator doesn't fully enforce entitlements, but is
-required for device builds.
-""".format(profile_extension = profile_extension),
-        ),
-    }
-
-# Returns a dictionary of rule attributes common to all rules that produce Apple bundles.
 def _common_bundle_attrs(*, deps_cfg):
+    """Returns a dictionary of rule attributes common to all rules that produce Apple bundles."""
     return {
         "bundle_name": attr.string(
             mandatory = False,
@@ -530,7 +620,8 @@ def _device_family_attrs(*, allowed_families, is_mandatory = False):
     Args:
         allowed_families: List of strings representing valid device families to compile assets
             compatible for the given target.
-        is_mandatory: Boolean. If `True`, the `families` attribute must be set by the user. Optional.
+        is_mandatory: Boolean. If `True`, the `families` attribute must be set by the user.
+            Optional.
     """
     extra_args = {}
     if not is_mandatory:
@@ -544,6 +635,14 @@ A list of device families supported by this extension. Valid values are `iphone`
 least one must be specified.
 """,
             **extra_args
+        ),
+    }
+
+def _extensionkit_attrs():
+    """Returns the attributes required to define a target as an ExtensionKit extension."""
+    return {
+        "extensionkit_extension": attr.bool(
+            doc = "Indicates if this target should be treated as an ExtensionKit extension.",
         ),
     }
 
@@ -569,70 +668,44 @@ named `*.{app_icon_parent_extension}/*.{app_icon_extension}` and there may be on
         ),
     }
 
-# Returns the attribute required to support launch images for a given target.
-_LAUNCH_IMAGES_ATTRS = {
-    "launch_images": attr.label_list(
-        allow_files = True,
-        doc = """
+def _launch_images_attrs():
+    """Returns the attribute required to support launch images for a given target."""
+    return {
+        "launch_images": attr.label_list(
+            allow_files = True,
+            doc = """
 Files that comprise the launch images for the application. Each file must have a containing
 directory named `*.xcassets/*.launchimage` and there may be only one such `.launchimage` directory
 in the list.
 """,
-    ),
-}
+        ),
+    }
 
-# Returns the attribute required to support settings bundles for a given target.
-_SETTINGS_BUNDLE_ATTRS = {
-    "settings_bundle": attr.label(
-        aspects = [apple_resource_aspect],
-        providers = [["objc"], [AppleResourceBundleInfo], [apple_common.Objc]],
-        doc = """
+def _settings_bundle_attrs():
+    """Returns the attribute required to support settings bundles for a given target."""
+    return {
+        "settings_bundle": attr.label(
+            aspects = [apple_resource_aspect],
+            providers = [["objc"], [AppleResourceBundleInfo], [apple_common.Objc]],
+            doc = """
 A resource bundle (e.g. `apple_bundle_import`) target that contains the files that make up the
 application's settings bundle. These files will be copied into the root of the final application
 bundle in a directory named `Settings.bundle`.
 """,
-    ),
-}
-
-# Returns the attribute required to launch a *_application target using
-# an Apple simulator (through apple_simulator.template.py) with `bazel run`.
-_SIMULATOR_RUNNER_TEMPLATE_ATTR = {
-    "_runner_template": attr.label(
-        cfg = "exec",
-        allow_single_file = True,
-        default = Label(
-            "@build_bazel_rules_apple//apple/internal/templates:apple_simulator_template",
         ),
-    ),
-}
+    }
 
-# Returns the attributes required to support entitlements for a given target.
-_ENTITLEMENTS_ATTRS = {
-    "entitlements": attr.label(
-        allow_single_file = True,
-        doc = """
-The entitlements file required for device builds of this target. If absent, the default entitlements
-from the provisioning profile will be used.
-
-The following variables are substituted in the entitlements file: `$(CFBundleIdentifier)` with the
-bundle ID of the application and `$(AppIdentifierPrefix)` with the value of the
-`ApplicationIdentifierPrefix` key from the target's provisioning profile.
-""",
-    ),
-    "entitlements_validation": attr.string(
-        default = entitlements_validation_mode.loose,
-        doc = """
-An `entitlements_validation_mode` to control the validation of the requested entitlements against
-the provisioning profile to ensure they are supported.
-""",
-        values = [
-            entitlements_validation_mode.error,
-            entitlements_validation_mode.warn,
-            entitlements_validation_mode.loose,
-            entitlements_validation_mode.skip,
-        ],
-    ),
-}
+def _simulator_runner_template_attr():
+    """Returns the attribute required to `bazel run` a *_application target with an Apple sim."""
+    return {
+        "_runner_template": attr.label(
+            cfg = "exec",
+            allow_single_file = True,
+            default = Label(
+                "@build_bazel_rules_apple//apple/internal/templates:apple_simulator_template",
+            ),
+        ),
+    }
 
 # Returns the aspects required to support a test host for a given target.
 _TEST_HOST_ASPECTS = [framework_provider_aspect]
@@ -645,28 +718,28 @@ rule_attrs = struct(
     app_intents_attrs = _app_intents_attrs,
     aspects = struct(test_host_aspects = _TEST_HOST_ASPECTS),
     binary_linking_attrs = _binary_linking_attrs,
-    bundle_id_attrs = _bundle_id_attrs,
     cc_toolchain_forwarder_attrs = _cc_toolchain_forwarder_attrs,
-    common_attrs = _COMMON_ATTRS,
+    common_attrs = _common_attrs,
     common_bundle_attrs = _common_bundle_attrs,
-    common_tool_attrs = _COMMON_TOOL_ATTRS,
-    custom_transition_allowlist_attr = _CUSTOM_TRANSITION_ALLOWLIST_ATTR,
+    common_tool_attrs = _common_tool_attrs,
+    custom_transition_allowlist_attr = _custom_transition_allowlist_attr,
     device_family_attrs = _device_family_attrs,
-    entitlements_attrs = _ENTITLEMENTS_ATTRS,
+    extensionkit_attrs = _extensionkit_attrs,
     infoplist_attrs = _infoplist_attrs,
-    launch_images_attrs = _LAUNCH_IMAGES_ATTRS,
+    launch_images_attrs = _launch_images_attrs,
     platform_attrs = _platform_attrs,
-    provisioning_profile_attrs = _provisioning_profile_attrs,
-    settings_bundle_attrs = _SETTINGS_BUNDLE_ATTRS,
-    simulator_runner_template_attr = _SIMULATOR_RUNNER_TEMPLATE_ATTR,
+    settings_bundle_attrs = _settings_bundle_attrs,
+    signing_attrs = _signing_attrs,
+    simulator_runner_template_attr = _simulator_runner_template_attr,
     static_library_linking_attrs = _static_library_linking_attrs,
-    test_bundle_attrs = _TEST_BUNDLE_ATTRS,
+    test_bundle_attrs = _test_bundle_attrs,
     test_host_attrs = _test_host_attrs,
     defaults = struct(
         allowed_families = struct(
             ios = ["iphone", "ipad"],
             macos = ["mac"],
             tvos = ["tv"],
+            visionos = ["reality"],
             watchos = ["watch"],
         ),
         test_bundle_infoplist = _test_bundle_infoplist,

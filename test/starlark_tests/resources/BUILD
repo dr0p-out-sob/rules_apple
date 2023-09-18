@@ -28,7 +28,9 @@ package(
 # package.
 exports_files(
     glob(["**"]),
-    visibility = ["//test/starlark_tests:__subpackages__"],
+    visibility = [
+        "//test/starlark_tests:__subpackages__",
+    ],
 )
 
 # --------------------------------------------------------------------------------
@@ -309,6 +311,9 @@ objc_library(
     name = "objc_test_lib",
     testonly = True,
     srcs = ["test.m"],
+    sdk_frameworks = [
+        "XCTest",
+    ],
     tags = common.fixture_tags,
     deps = [
     ],
@@ -507,6 +512,11 @@ filegroup(
 )
 
 filegroup(
+    name = "basic_docc_bundle_files",
+    srcs = ["basic.docc"],
+)
+
+filegroup(
     name = "localized_storyboards_ios",
     srcs = glob(["*.lproj/*.storyboard"]),
 )
@@ -584,6 +594,13 @@ objc_library(
     data = [
         ":nested_bundle",
     ],
+    tags = common.fixture_tags,
+)
+
+objc_library(
+    name = "objc_linkopt_lib",
+    srcs = ["@bazel_tools//tools/objc:dummy.c"],
+    linkopts = ["-Wl,-framework,CoreMotion"],
     tags = common.fixture_tags,
 )
 
@@ -1013,6 +1030,11 @@ filegroup(
 filegroup(
     name = "TVBrandAssets.xcassets",
     srcs = glob(["TVBrandAssets.xcassets/**"]),
+)
+
+filegroup(
+    name = "VisionAppIcon.xcassets",
+    srcs = glob(["VisionAppIcon.xcassets/**"]),
 )
 
 filegroup(

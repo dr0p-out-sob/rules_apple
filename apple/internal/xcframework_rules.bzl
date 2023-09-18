@@ -64,6 +64,12 @@ load(
     "processor",
 )
 load(
+    "@build_bazel_rules_apple//apple/internal:providers.bzl",
+    "new_applebundleinfo",
+    "new_applestaticxcframeworkbundleinfo",
+    "new_applexcframeworkbundleinfo",
+)
+load(
     "@build_bazel_rules_apple//apple/internal:resources.bzl",
     "resources",
 )
@@ -101,10 +107,7 @@ load(
 )
 load(
     "@build_bazel_rules_apple//apple:providers.bzl",
-    "AppleBundleInfo",
     "AppleBundleVersionInfo",
-    "AppleStaticXcframeworkBundleInfo",
-    "AppleXcframeworkBundleInfo",
 )
 load("@build_bazel_rules_swift//swift:swift.bzl", "SwiftInfo")
 load("@bazel_skylib//lib:partial.bzl", "partial")
@@ -244,7 +247,7 @@ def _library_identifier(*, architectures, environment, platform):
             Typically `device` or `simulator`.
         platform: The platform of the target that was built, which corresponds to the toolchain's
             target triple values as reported by `apple_common` linking APIs.
-            For example, `ios`, `macos`, `tvos` or `watchos`.
+            For example, `ios`, `macos`, `tvos`, `visionos` or `watchos`.
 
     Returns:
         A string that can be used to determine the subfolder this embedded framework will be found
@@ -303,7 +306,7 @@ def _available_library_dictionary(
             the xcframework bundle.
         platform: The platform of the target that was built, which corresponds to the toolchain's
             target triple values as reported by `apple_common` linking APIs.
-            For example, `ios`, `macos`, `tvos` or `watchos`.
+            For example, `ios`, `macos`, `tvos`, `visionos`, or `watchos`.
 
     Returns:
         A dictionary containing keys representing how a given framework should be referenced in the
@@ -628,7 +631,11 @@ def _apple_xcframework_impl(ctx):
                 executable_name = executable_name,
                 label_name = label.name,
                 linkmaps = link_output.linkmaps,
+                output_discriminator = library_identifier,
                 platform_prerequisites = platform_prerequisites,
+                resolved_plisttool = apple_mac_toolchain_info.resolved_plisttool,
+                rule_label = label,
+                version = ctx.attr.version,
             ),
             partials.resources_partial(
                 actions = actions,
@@ -753,7 +760,7 @@ def _apple_xcframework_impl(ctx):
 
     processor_output = [
         # Limiting the contents of AppleBundleInfo to what is necessary for testing and validation.
-        AppleBundleInfo(
+        new_applebundleinfo(
             archive = ctx.outputs.archive,
             bundle_extension = ".xcframework",
             bundle_id = nested_bundle_id,
@@ -762,7 +769,7 @@ def _apple_xcframework_impl(ctx):
             infoplist = root_info_plist,
             platform_type = None,
         ),
-        AppleXcframeworkBundleInfo(),
+        new_applexcframeworkbundleinfo(),
         DefaultInfo(
             files = depset([ctx.outputs.archive], transitive = framework_output_files),
         ),
@@ -781,7 +788,7 @@ apple_xcframework = rule_factory.create_apple_rule(
     predeclared_outputs = {"archive": "%{name}.xcframework.zip"},
     toolchains = [],
     attrs = [
-        rule_attrs.common_tool_attrs,
+        rule_attrs.common_tool_attrs(),
         rule_attrs.binary_linking_attrs(
             deps_cfg = transition_support.xcframework_transition,
             extra_deps_aspects = [
@@ -850,7 +857,7 @@ built for those platform variants (for example, `x86_64`, `arm64`) as their valu
                 doc = """
 A dictionary of strings indicating which platform variants should be built for the tvOS platform (
 `device` or `simulator`) as keys, and arrays of strings listing which architectures should be
-built for those platform variants (for example, `i386`, `arm64`) as their values.
+built for those platform variants (for example, `x86_64`, `arm64`) as their values.
 """,
             ),
             "minimum_deployment_os_versions": attr.string_dict(
@@ -1095,7 +1102,7 @@ def _apple_static_xcframework_impl(ctx):
 
     return [
         # Limiting the contents of AppleBundleInfo to what is necessary for testing and validation.
-        AppleBundleInfo(
+        new_applebundleinfo(
             archive = outputs_archive,
             bundle_extension = ".xcframework",
             bundle_name = bundle_name,
@@ -1103,7 +1110,7 @@ def _apple_static_xcframework_impl(ctx):
             infoplist = root_info_plist,
             platform_type = None,
         ),
-        AppleStaticXcframeworkBundleInfo(),
+        new_applestaticxcframeworkbundleinfo(),
         DefaultInfo(
             files = depset([outputs_archive]),
         ),
@@ -1116,7 +1123,7 @@ apple_static_xcframework = rule_factory.create_apple_rule(
     predeclared_outputs = {"archive": "%{name}.xcframework.zip"},
     toolchains = [],
     attrs = [
-        rule_attrs.common_tool_attrs,
+        rule_attrs.common_tool_attrs(),
         rule_attrs.static_library_linking_attrs(
             deps_cfg = transition_support.xcframework_transition,
         ),

@@ -21,7 +21,7 @@ import unittest
 from unittest import mock
 import zipfile
 
-from build_bazel_rules_apple.tools.dossier_codesigningtool import dossier_codesigningtool
+from tools.dossier_codesigningtool import dossier_codesigningtool
 
 _FAKE_CODESIGN_STDERR_WITH_ADHOC_SIGNING = """\
 Executable=/tmp/app_minimal.app/app_minimal
@@ -245,6 +245,13 @@ class DossierCodesigningtoolGenerateTest(unittest.TestCase):
     mock_extract_provisioning_profile.return_value = (
         '/path/to/fake.mobileprovision')
 
+    extensions_embedded_manifest = {
+        'codesign_identity': 'My fake codesign identity',
+        'entitlements': 'fake.entitlements',
+        'provisioning_profile': 'fake.mobileprovision',
+        'embedded_relative_path': 'Extensions/Extension.appex',
+        'embedded_bundle_manifests': [],
+    }
     frameworks_embedded_manifest = {
         'codesign_identity': 'My fake codesign identity',
         'entitlements': 'fake.entitlements',
@@ -268,6 +275,7 @@ class DossierCodesigningtoolGenerateTest(unittest.TestCase):
     }
     mock_embedded_manifests_for_path.side_effect = [
         [],  # AppClips
+        [extensions_embedded_manifest],  # Extensions
         [plugins_embedded_manifest],  # PlugIns
         [frameworks_embedded_manifest],  # Frameworks
         [watch_embedded_manifest],  # Watch
@@ -285,6 +293,7 @@ class DossierCodesigningtoolGenerateTest(unittest.TestCase):
           'entitlements': '/path/to/fake.entitlements',
           'provisioning_profile': '/path/to/fake.mobileprovision',
           'embedded_bundle_manifests': [
+              extensions_embedded_manifest,
               plugins_embedded_manifest,
               frameworks_embedded_manifest,
               watch_embedded_manifest,

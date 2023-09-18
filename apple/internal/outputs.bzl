@@ -47,11 +47,14 @@ def _archive(
         platform_prerequisites = platform_prerequisites,
     )
     if tree_artifact_enabled:
-        archive_relative_path = rule_descriptor.bundle_locations.archive_relative
-        root_path = label_name + "_archive-root"
-        return actions.declare_directory(
-            paths.join(root_path, archive_relative_path, bundle_name_with_extension),
-        )
+        if bundle_name != label_name:
+            archive_relative_path = rule_descriptor.bundle_locations.archive_relative
+            root_path = label_name + "_archive-root"
+            return actions.declare_directory(
+                paths.join(root_path, archive_relative_path, bundle_name_with_extension),
+            )
+
+        return actions.declare_directory(bundle_name_with_extension)
     return predeclared_outputs.archive
 
 def _archive_for_embedding(
@@ -95,6 +98,14 @@ def _binary(*, actions, bundle_name, executable_name, label_name, output_discrim
 def _executable(*, actions, label_name):
     """Returns a file reference for the executable that would be invoked with `bazel run`."""
     return actions.declare_file(label_name)
+
+def _dsyms(*, processor_result):
+    """Returns a depset of all of the dsyms from the result."""
+    dsyms = []
+    for provider in processor_result.providers:
+        if getattr(provider, "dsyms", None):
+            dsyms.append(provider.dsyms)
+    return depset(transitive = dsyms)
 
 def _infoplist(*, actions, label_name, output_discriminator):
     """Returns a file reference for this target's Info.plist file."""
@@ -168,6 +179,7 @@ outputs = struct(
     archive = _archive,
     archive_for_embedding = _archive_for_embedding,
     binary = _binary,
+    dsyms = _dsyms,
     executable = _executable,
     infoplist = _infoplist,
     merge_output_groups = _merge_output_groups,

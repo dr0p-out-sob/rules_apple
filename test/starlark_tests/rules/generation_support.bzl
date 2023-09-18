@@ -422,13 +422,14 @@ def _copy_framework_library(
         target_name = label.name,
     )
 
+    cp_command = "cp {src} {dest}".format(
+        src = library.path,
+        dest = framework_binary.path,
+    )
+
     # Copy and modify binary rpath for macOS versioned framework.
-    # For all other platforms, symlink the framework binary as is.
+    # For all other platforms, copy the framework binary as is.
     if ".framework/Versions/" in framework_directory:
-        cp_command = "cp {src} {dest}".format(
-            src = library.path,
-            dest = framework_binary.path,
-        )
         if is_dynamic:
             install_name_tool_command = "install_name_tool -id {name} {file}".format(
                 name = "@rpath/{name}.framework/Versions/{version}/{name}".format(
@@ -451,9 +452,13 @@ def _copy_framework_library(
             ),
         )
     else:
-        actions.symlink(
-            output = framework_binary,
-            target_file = library,
+        apple_support.run_shell(
+            actions = actions,
+            apple_fragment = apple_fragment,
+            xcode_config = xcode_config,
+            outputs = [framework_binary],
+            inputs = [library],
+            command = cp_command,
         )
 
     return framework_binary
@@ -492,7 +497,6 @@ def _copy_framework_headers_and_modulemap(
         headers = headers,
         headers_path = headers_path,
         label = label,
-        is_framework_umbrella_header = True,
     )
     framework_headers.append(umbrella_header)
 
@@ -590,7 +594,15 @@ def _copy_file(*, actions, base_path = "", file, label, target_filename = None):
         target_name = label.name,
     )
 
-    actions.symlink(output = copied_file, target_file = file)
+    actions.run_shell(
+        inputs = [file],
+        outputs = [copied_file],
+        command = "cp {src} {dest}".format(
+            src = file.path,
+            dest = copied_file.path,
+        ),
+    )
+
     return copied_file
 
 def _get_file_with_extension(*, extension, files):
@@ -613,8 +625,7 @@ def _generate_umbrella_header(
         bundle_name,
         headers,
         headers_path,
-        label,
-        is_framework_umbrella_header = False):
+        label):
     """Generates a single umbrella header given a sequence of header files.
 
     Args:
@@ -623,14 +634,12 @@ def _generate_umbrella_header(
         headers: List of header files for the framework bundle.
         headers_path: Base path for the generated umbrella header file.
         label: Label of the target being built.
-        is_framework_umbrella_header: Boolean to indicate if the generated umbrella header is for an
-          Apple framework. Defaults to `False`.
     Returns:
         File for the generated umbrella header.
     """
     header_text = "#import <Foundation/Foundation.h>\n"
 
-    header_prefix = bundle_name if is_framework_umbrella_header else ""
+    header_prefix = bundle_name
     for header in headers:
         header_text += "#import <{}>\n".format(paths.join(header_prefix, header.basename))
 

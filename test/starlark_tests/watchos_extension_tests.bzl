@@ -27,6 +27,10 @@ load(
     "analysis_output_group_info_files_test",
 )
 load(
+    "//test/starlark_tests/rules:apple_dsym_bundle_info_test.bzl",
+    "apple_dsym_bundle_info_test",
+)
+load(
     "//test/starlark_tests/rules:apple_verification_test.bzl",
     "apple_verification_test",
 )
@@ -38,10 +42,6 @@ load(
     "//test/starlark_tests/rules:common_verification_tests.bzl",
     "archive_contents_test",
     "entry_point_test",
-)
-load(
-    "//test/starlark_tests/rules:dsyms_test.bzl",
-    "dsyms_test",
 )
 load(
     "//test/starlark_tests/rules:infoplist_contents_test.bzl",
@@ -124,11 +124,21 @@ def watchos_extension_test_suite(name):
         tags = [name],
     )
 
-    dsyms_test(
-        name = "{}_dsyms_test".format(name),
+    analysis_output_group_info_files_test(
+        name = "{}_dsyms_output_group_files_test".format(name),
         target_under_test = "//test/starlark_tests/targets_under_test/watchos:ext",
-        expected_direct_dsyms = ["ext_dsyms/ext.appex"],
-        expected_transitive_dsyms = ["ext_dsyms/ext.appex"],
+        output_group_name = "dsyms",
+        expected_outputs = [
+            "ext.appex.dSYM/Contents/Info.plist",
+            "ext.appex.dSYM/Contents/Resources/DWARF/ext",
+        ],
+        tags = [name],
+    )
+    apple_dsym_bundle_info_test(
+        name = "{}_dsym_bundle_info_files_test".format(name),
+        target_under_test = "//test/starlark_tests/targets_under_test/watchos:ext",
+        expected_direct_dsyms = ["dSYMs/ext.appex.dSYM"],
+        expected_transitive_dsyms = ["dSYMs/ext.appex.dSYM"],
         tags = [name],
     )
 
@@ -267,16 +277,12 @@ def watchos_extension_test_suite(name):
         tags = [name],
     )
 
-    # Test app with App Intents generates and bundles Metadata.appintents bundle.
-    archive_contents_test(
-        name = "{}_contains_app_intents_metadata_bundle".format(name),
-        build_type = "simulator",
-        cpus = {"watchos_cpus": ["arm64"]},
-        target_under_test = "//test/starlark_tests/targets_under_test/watchos:ext_with_app_intents",
-        contains = [
-            "$BUNDLE_ROOT/Metadata.appintents/extract.actionsdata",
-            "$BUNDLE_ROOT/Metadata.appintents/version.json",
-        ],
+    infoplist_contents_test(
+        name = "{}_capability_set_derived_bundle_id_plist_test".format(name),
+        target_under_test = "//test/starlark_tests/targets_under_test/watchos:ext_with_capability_set_derived_bundle_id",
+        expected_values = {
+            "CFBundleIdentifier": "com.bazel.app.example.watchkitapp.watchkitextension",
+        },
         tags = [name],
     )
 

@@ -12,6 +12,10 @@ load(
     "generate_static_xcframework",
 )
 load(
+    "//apple:ios.bzl",
+    "ios_application",
+)
+load(
     "//apple:versioning.bzl",
     "apple_bundle_version",
 )
@@ -22,6 +26,8 @@ load(
 load(
     "//apple:resources.bzl",
     "apple_core_data_model",
+    "apple_core_ml_library",
+    "swift_apple_core_ml_library",
 )
 load(
     "@build_bazel_rules_swift//swift:swift.bzl",
@@ -35,6 +41,7 @@ load(
     "//test/testdata/rules:dummy_test_runner.bzl",
     "dummy_test_runner",
 )
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
 
 licenses(["notice"])
 
@@ -513,7 +520,7 @@ genrule(
             "ios_xcframework_bundling_static_fmwks",
         ]
         for platform_id in [
-            "ios-arm64",
+            "ios-arm64_arm64e",
             "ios-arm64_x86_64-simulator",
         ]
     ] + ["ios_xcframework_bundling_static_fmwks.xcframework/Info.plist"],
@@ -847,6 +854,37 @@ apple_xcframework(
     deps = [":SwiftFmwkWithGenHeader"],
 )
 
+# Reserved as an input for import_dynamic_(xc)framework rules; must be referenced as a List of Files
+# as an input to one of such rules.
+apple_xcframework(
+    name = "ios_swift_3p_xcframework_with_generated_header",
+    bundle_id = "com.google.example",
+    bundle_name = "Swift3PFmwkWithGenHeader",
+    # TODO(b/239957001): Remove this when the rule no longer forces library
+    # evolution.
+    features = ["apple.no_legacy_swiftinterface"],
+    infoplists = [
+        "//test/starlark_tests/resources:Info.plist",
+    ],
+    ios = {
+        "simulator": [
+            "arm64",
+            "x86_64",
+        ],
+        "device": [
+            "arm64",
+        ],
+    },
+    minimum_os_versions = {
+        "ios": common.min_os_ios.baseline,
+    },
+    public_hdrs = [
+        "//test/starlark_tests/resources:shared.h",
+    ],
+    tags = common.fixture_tags,
+    deps = [":Swift3PFmwkWithGenHeader"],
+)
+
 apple_xcframework(
     name = "ios_dynamic_xcframework_with_umbrella_header_conflict",
     bundle_id = "com.google.example",
@@ -905,10 +943,13 @@ apple_static_xcframework(
             "x86_64",
             "arm64",
         ],
-        "device": ["arm64"],
+        "device": [
+            "arm64",
+            "arm64e",
+        ],
     },
     minimum_os_versions = {
-        "ios": "9.0",
+        "ios": common.min_os_ios.baseline,
     },
     public_hdrs = [
         "//test/starlark_tests/resources:shared.h",
@@ -937,7 +978,7 @@ genrule(
             "resource_bundle.bundle/Info.plist",
         ]
         for platform_id in [
-            "ios-arm64",
+            "ios-arm64_arm64e",
             "ios-arm64_x86_64-simulator",
         ]
     ] + ["ios_static_xcframework_with_resources.xcframework/Info.plist"],
@@ -970,10 +1011,13 @@ apple_static_xcframework(
             "x86_64",
             "arm64",
         ],
-        "device": ["arm64"],
+        "device": [
+            "arm64",
+            "arm64e",
+        ],
     },
     minimum_os_versions = {
-        "ios": "9.0",
+        "ios": common.min_os_ios.baseline,
     },
     public_hdrs = [
         "//test/starlark_tests/resources:shared.h",
@@ -1192,6 +1236,17 @@ swift_library(
     tags = common.fixture_tags,
 )
 
+# Reserved as an input for import_dynamic_(xc)framework rules; referenced by an apple_xcframework
+# rule treated as a List of Files that properly declares a bundle_name matching this module_name.
+swift_library(
+    name = "Swift3PFmwkWithGenHeader",
+    srcs = ["DummyFmwk.swift"],
+    features = ["swift.enable_library_evolution"],
+    generates_header = True,
+    module_name = "Swift3PFmwkWithGenHeader",
+    tags = common.fixture_tags,
+)
+
 apple_universal_binary(
     name = "multi_arch_cc_binary",
     binary = "//test/starlark_tests/resources:cc_test_binary",
@@ -1263,5 +1318,89 @@ generate_dynamic_xcframework(
         ],
         "ios": ["arm64"],
     },
+    tags = common.fixture_tags,
+)
+
+# ---------------------------------------------------------------------------------------
+# Targets for Apple Core ML library tests.
+
+ios_application(
+    name = "app_with_core_ml_library",
+    bundle_id = "my.bundle.id",
+    families = ["iphone"],
+    infoplists = ["//test/starlark_tests/resources:Info.plist"],
+    minimum_os_version = common.min_os_ios.baseline,
+    tags = common.fixture_tags,
+    deps = [":core_ml_library_depending_lib"],
+)
+
+objc_library(
+    name = "core_ml_library_depending_lib",
+    srcs = ["//test/starlark_tests/resources:main.m"],
+    tags = common.fixture_tags,
+    deps = [
+        ":core_ml_objc_lib",
+        ":core_ml_swift_lib",
+    ],
+)
+
+objc_library(
+    name = "core_ml_objc_lib",
+    srcs = [":core_ml_objc_lib_src"],
+    tags = common.fixture_tags,
+    deps = [":SampleCoreML"],
+)
+
+write_file(
+    name = "core_ml_objc_lib_src",
+    out = "core_ml_objc_lib.m",
+    content = ["""
+#import <Foundation/Foundation.h>
+#import "test/starlark_tests/targets_under_test/apple/SampleCoreML.h"
+
+@interface ObjcLib: NSObject
+@end
+
+@implementation ObjcLib
+- (void)test:(sample *)sample {
+  NSLog(@"%@", sample);
+}
+@end
+"""],
+    tags = common.fixture_tags,
+)
+
+swift_library(
+    name = "core_ml_swift_lib",
+    srcs = [":core_ml_swift_lib_src"],
+    tags = common.fixture_tags,
+    deps = [
+        ":SampleSwiftCoreML",
+    ],
+)
+
+write_file(
+    name = "core_ml_swift_lib_src",
+    out = "swift_lib.swift",
+    content = ["""
+import Foundation
+import test_starlark_tests_targets_under_test_apple_SampleSwiftCoreML
+
+public struct SwiftLib {
+  public var mySample = try! sample(configuration: .init())
+}
+"""],
+    tags = common.fixture_tags,
+)
+
+apple_core_ml_library(
+    name = "SampleCoreML",
+    mlmodel = "//test/testdata/resources:sample.mlmodel",
+    tags = common.fixture_tags,
+)
+
+swift_apple_core_ml_library(
+    name = "SampleSwiftCoreML",
+    mlmodel = "//test/testdata/resources:sample.mlmodel",
     tags = common.fixture_tags,
 )
