@@ -34,6 +34,7 @@ bzl_library(
     name = "apple",
     srcs = ["apple.bzl"],
     deps = [
+        "//apple:apple_static_library",
         "//apple/internal:apple_framework_import",
         "//apple/internal:apple_universal_binary",
         "//apple/internal:apple_xcframework_import",
@@ -47,7 +48,6 @@ bzl_library(
     name = "apple_binary",
     srcs = ["apple_binary.bzl"],
     deps = [
-        "//apple/internal:apple_toolchains",
         "//apple/internal:linking_support",
         "//apple/internal:rule_attrs",
         "//apple/internal:rule_factory",
@@ -60,7 +60,6 @@ bzl_library(
     srcs = ["apple_static_library.bzl"],
     deps = [
         ":providers",
-        "//apple/internal:apple_toolchains",
         "//apple/internal:linking_support",
         "//apple/internal:providers",
         "//apple/internal:rule_attrs",
@@ -126,7 +125,11 @@ bzl_library(
 bzl_library(
     name = "ios.doc",
     srcs = ["ios.doc.bzl"],
-    deps = ["ios"],
+    deps = [
+        ":ios",
+        "//apple/testing/default_runner:ios_test_runner",
+        "//apple/testing/default_runner:ios_xctestrun_runner",
+    ],
 )
 
 bzl_library(
@@ -250,6 +253,12 @@ bzl_library(
     name = "docc",
     srcs = ["docc.bzl"],
     deps = ["//apple/internal:docc"],
+)
+
+bzl_library(
+    name = "header_map",
+    srcs = ["header_map.bzl"],
+    deps = ["//apple/internal:header_map"],
 )
 
 cc_toolchain_forwarder(

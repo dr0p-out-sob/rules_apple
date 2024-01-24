@@ -15,6 +15,10 @@
 """apple_static_xcframework_import Starlark tests."""
 
 load(
+    "@build_bazel_rules_apple//apple/build_settings:build_settings.bzl",
+    "build_settings_labels",
+)
+load(
     "//test/starlark_tests/rules:analysis_target_actions_test.bzl",
     "analysis_contains_xcframework_processor_action_test",
 )
@@ -179,6 +183,7 @@ def apple_static_xcframework_import_test_suite(name):
     archive_contents_test(
         name = "{}_links_watchos_arm64_32_macho_load_cmd_for_device_test".format(name),
         build_type = "device",
+        cpus = {"watchos_cpus": ["arm64_32"]},
         target_under_test = "//test/starlark_tests/targets_under_test/watchos:app_with_imported_static_xcframework",
         not_contains = ["$BUNDLE_ROOT/Frameworks"],
         binary_test_file = "$BUNDLE_ROOT/app_with_imported_static_xcframework",
@@ -228,7 +233,7 @@ def apple_static_xcframework_import_test_suite(name):
             "-[SharedClass doSomethingShared]",
             "_OBJC_CLASS_$_SharedClass",
         ],
-        macho_load_commands_contain = ["cmd LC_VERSION_MIN_TVOS"],
+        macho_load_commands_contain = ["cmd LC_BUILD_VERSION", "platform TVOSSIMULATOR"],
         tags = [name],
     )
 
@@ -245,7 +250,7 @@ def apple_static_xcframework_import_test_suite(name):
         ],
         not_contains = ["$BUNDLE_ROOT/Frameworks/"],
         build_settings = {
-            "//apple/build_settings:parse_xcframework_info_plist": "True",
+            build_settings_labels.parse_xcframework_info_plist: "True",
         },
         tags = [name],
     )
@@ -260,7 +265,7 @@ def apple_static_xcframework_import_test_suite(name):
         ],
         contains = ["$BUNDLE_ROOT/Frameworks/libswiftCore.dylib"],
         build_settings = {
-            "//apple/build_settings:parse_xcframework_info_plist": "True",
+            build_settings_labels.parse_xcframework_info_plist: "True",
         },
         tags = [name],
     )

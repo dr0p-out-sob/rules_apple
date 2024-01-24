@@ -114,16 +114,16 @@ def apple_rules_dependencies(ignore_version_differences = False, include_bzlmod_
         _maybe(
             http_archive,
             name = "build_bazel_apple_support",
-            sha256 = "b506c67200a6a64476b5615db20c887a0ff33128acaa3148a5c9e5167c4a075e",
-            url = "https://github.com/bazelbuild/apple_support/releases/download/1.9.0/apple_support.1.9.0.tar.gz",
+            sha256 = "cf4d63f39c7ba9059f70e995bf5fe1019267d3f77379c2028561a5d7645ef67c",
+            url = "https://github.com/bazelbuild/apple_support/releases/download/1.11.1/apple_support.1.11.1.tar.gz",
             ignore_version_differences = ignore_version_differences,
         )
 
         _maybe(
             http_archive,
             name = "build_bazel_rules_swift",
-            sha256 = "f7ab777e1b246cebed185417bffd93135be806e45248c57fd34e0f676bfb1c65",
-            url = "https://github.com/bazelbuild/rules_swift/releases/download/1.11.0/rules_swift.1.11.0.tar.gz",
+            sha256 = "e2eee463839483dfe1b05ce406a4f2fb3fd748ddcaa311cc8768fa7f041af0ff",
+            url = "https://github.com/bazelbuild/rules_swift/releases/download/1.15.1/rules_swift.1.15.1.tar.gz",
             ignore_version_differences = ignore_version_differences,
         )
 
@@ -153,9 +153,9 @@ def apple_rules_dependencies(ignore_version_differences = False, include_bzlmod_
         http_archive,
         name = "xctestrunner",
         urls = [
-            "https://github.com/google/xctestrunner/archive/4c5709da9444eae6bba2425734b8654635bed0a6.tar.gz",
+            "https://github.com/google/xctestrunner/archive/b7698df3d435b6491b4b4c0f9fc7a63fbed5e3a6.tar.gz",
         ],
-        strip_prefix = "xctestrunner-4c5709da9444eae6bba2425734b8654635bed0a6",
-        sha256 = "e5d4c53c3965ae943fb08ccd7df0efd75590213fce5052388f23fad81a649f5a",
+        strip_prefix = "xctestrunner-b7698df3d435b6491b4b4c0f9fc7a63fbed5e3a6",
+        sha256 = "ae3a063c985a8633cb7eb566db21656f8db8eb9a0edb8c182312c7f0db53730d",
         ignore_version_differences = ignore_version_differences,
     )

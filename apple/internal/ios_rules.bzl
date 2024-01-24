@@ -143,6 +143,9 @@ load("@build_bazel_rules_swift//swift:swift.bzl", "SwiftInfo")
 load("@bazel_skylib//lib:collections.bzl", "collections")
 load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain")
 
+# TODO: Remove once we drop bazel 7.x
+_OBJC_PROVIDER_LINKING = hasattr(apple_common.new_objc_provider(), "linkopt")
+
 def _ios_application_impl(ctx):
     """Implementation of ios_application."""
     rule_descriptor = rule_support.rule_descriptor(
@@ -494,7 +497,7 @@ def _ios_application_impl(ctx):
                 processor_result.output_groups,
             )
         ),
-        apple_common.new_executable_binary_provider(
+        linking_support.new_executable_binary_provider(
             binary = binary_artifact,
             cc_info = link_result.cc_info,
             objc = link_result.objc,
@@ -785,7 +788,7 @@ def _ios_app_clip_impl(ctx):
                 processor_result.output_groups,
             )
         ),
-        apple_common.new_executable_binary_provider(
+        linking_support.new_executable_binary_provider(
             binary = binary_artifact,
             cc_info = link_result.cc_info,
             objc = link_result.objc,
@@ -1327,8 +1330,9 @@ def _ios_extension_impl(ctx):
         DefaultInfo(
             files = processor_result.output_files,
         ),
-        apple_common.new_executable_binary_provider(
+        linking_support.new_executable_binary_provider(
             binary = binary_artifact,
+            cc_info = link_result.cc_info,
             objc = link_result.objc,
         ),
         new_iosextensionbundleinfo(),
@@ -1606,10 +1610,7 @@ def _ios_dynamic_framework_impl(ctx):
                 feature_configuration = cc_features,
                 libraries = provider.framework_files.to_list(),
             )
-            additional_providers.extend([
-                apple_common.new_objc_provider(
-                    dynamic_framework_file = provider.framework_files,
-                ),
+            additional_providers.append(
                 CcInfo(
                     linking_context = cc_common.create_linking_context(
                         linker_inputs = depset([
@@ -1620,7 +1621,13 @@ def _ios_dynamic_framework_impl(ctx):
                         ]),
                     ),
                 ),
-            ])
+            )
+            if _OBJC_PROVIDER_LINKING:
+                additional_providers.append(
+                    apple_common.new_objc_provider(
+                        dynamic_framework_file = provider.framework_files,
+                    ),
+                )
     providers.extend(additional_providers)
 
     return [
@@ -2465,6 +2472,7 @@ ios_application = rule_factory.create_apple_rule(
             is_mandatory = True,
         ),
         rule_attrs.infoplist_attrs(),
+        rule_attrs.ipa_post_processor_attrs(),
         rule_attrs.launch_images_attrs(),
         rule_attrs.platform_attrs(
             platform_type = "ios",
@@ -2575,6 +2583,7 @@ ios_app_clip = rule_factory.create_apple_rule(
             is_mandatory = True,
         ),
         rule_attrs.infoplist_attrs(),
+        rule_attrs.ipa_post_processor_attrs(),
         rule_attrs.platform_attrs(
             platform_type = "ios",
             add_environment_plist = True,
@@ -2645,6 +2654,7 @@ However, iOS 14 introduced Widget Extensions that use a traditional `main` entry
         ),
         rule_attrs.extensionkit_attrs(),
         rule_attrs.infoplist_attrs(),
+        rule_attrs.ipa_post_processor_attrs(),
         rule_attrs.platform_attrs(
             platform_type = "ios",
             add_environment_plist = True,
@@ -2706,6 +2716,7 @@ of those `ios_application` and/or `ios_extension` rules.""",
             is_mandatory = True,
         ),
         rule_attrs.infoplist_attrs(),
+        rule_attrs.ipa_post_processor_attrs(),
         rule_attrs.platform_attrs(
             platform_type = "ios",
             add_environment_plist = True,
@@ -2769,6 +2780,7 @@ ios_dynamic_framework = rule_factory.create_apple_rule(
             allowed_families = rule_attrs.defaults.allowed_families.ios,
         ),
         rule_attrs.infoplist_attrs(),
+        rule_attrs.ipa_post_processor_attrs(),
         rule_attrs.platform_attrs(
             add_environment_plist = True,
             platform_type = "ios",
@@ -2872,6 +2884,7 @@ i.e. `--features=-swift.no_generated_header`).""",
             allowed_families = rule_attrs.defaults.allowed_families.ios,
             is_mandatory = False,
         ),
+        rule_attrs.ipa_post_processor_attrs(),
         rule_attrs.platform_attrs(
             platform_type = "ios",
             add_environment_plist = True,
@@ -2936,6 +2949,7 @@ for either an iOS iMessage extension or a Sticker Pack extension.""",
             is_mandatory = True,
         ),
         rule_attrs.infoplist_attrs(),
+        rule_attrs.ipa_post_processor_attrs(),
         rule_attrs.platform_attrs(
             platform_type = "ios",
             add_environment_plist = True,
@@ -2982,6 +2996,7 @@ ios_imessage_extension = rule_factory.create_apple_rule(
             is_mandatory = True,
         ),
         rule_attrs.infoplist_attrs(),
+        rule_attrs.ipa_post_processor_attrs(),
         rule_attrs.platform_attrs(
             platform_type = "ios",
             add_environment_plist = True,
@@ -3018,6 +3033,7 @@ ios_sticker_pack_extension = rule_factory.create_apple_rule(
             is_mandatory = True,
         ),
         rule_attrs.infoplist_attrs(),
+        rule_attrs.ipa_post_processor_attrs(),
         rule_attrs.platform_attrs(
             platform_type = "ios",
             add_environment_plist = True,

@@ -3,8 +3,8 @@ x_defaults:
   # YAML has a feature for "repeated nodes", BazelCI is fine with extra nodes
   # it doesn't know about; so that is used to avoid repeating common subparts.
   common: &common
-    platform: macos
-    xcode_version: "14.3"
+    platform: macos_arm64
+    xcode_version: "15.1"
     build_targets:
     - "tools/..."
     - "test/..."
@@ -25,8 +25,13 @@ x_defaults:
 # of these tasks, they are listed in the .bazelrc instead.
 tasks:
   macos_latest:
-    name: "Latest Bazel"
-    bazel: last_rc
+    name: "Current LTS"
+    bazel: latest
+    <<: *common
+
+  macos_6_lts:
+    name: "6.x LTS"
+    bazel: 6.x
     <<: *common
 
   macos_last_green:

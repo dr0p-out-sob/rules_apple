@@ -8,6 +8,10 @@ load(
     "AppleDsymBundleInfo",
 )
 load(
+    "@build_bazel_rules_apple//apple/internal/providers:apple_debug_info.bzl",
+    "AppleDebugInfo",
+)
+load(
     "@build_bazel_rules_apple//apple/internal:providers.bzl",
     "new_applebinaryinfo",
 )
@@ -21,6 +25,7 @@ def _xcarchive_impl(ctx):
     """
     bundle_info = ctx.attr.bundle[AppleBundleInfo]
     dsym_info = ctx.attr.bundle[AppleDsymBundleInfo]
+    debug_info = ctx.attr.bundle[AppleDebugInfo]
     xcarchive = ctx.actions.declare_directory("%s.xcarchive" % bundle_info.bundle_name)
 
     arguments = ctx.actions.args()
@@ -28,14 +33,24 @@ def _xcarchive_impl(ctx):
     arguments.add("--bundle", bundle_info.archive.path)
     arguments.add("--output", xcarchive.path)
 
-    for dsym in dsym_info.direct_dsyms:
-        arguments.add("--dsym", dsym.path)
+    arguments.add_all(
+        dsym_info.transitive_dsyms,
+        before_each = "--dsym",
+        expand_directories = False,
+    )
+
+    linkmaps = debug_info.linkmaps.to_list()
+    for linkmap in linkmaps:
+        arguments.add("--linkmap", linkmap.path)
 
     ctx.actions.run(
-        inputs = depset([
-            bundle_info.archive,
-            bundle_info.infoplist,
-        ] + dsym_info.direct_dsyms),
+        inputs = depset(
+            [
+                bundle_info.archive,
+                bundle_info.infoplist,
+            ] + linkmaps,
+            transitive = [dsym_info.transitive_dsyms],
+        ),
         outputs = [xcarchive],
         executable = ctx.executable._make_xcarchive,
         arguments = [arguments],
@@ -61,6 +76,7 @@ xcarchive = rule(
             providers = [
                 AppleBundleInfo,
                 AppleDsymBundleInfo,
+                AppleDebugInfo,
             ],
             doc = """\
 The label to a target to re-package into a .xcarchive. For example, an

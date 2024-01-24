@@ -139,6 +139,9 @@ def _apple_resource_aspect_impl(target, ctx):
         if ctx.rule.attr.srcs or ctx.rule.attr.non_arc_srcs or ctx.rule.attr.deps:
             owner = str(ctx.label)
 
+    elif ctx.rule.kind == "objc_import":
+        collect_args["res_attrs"] = ["data"]
+
     elif ctx.rule.kind == "swift_library":
         module_names = [x.name for x in target[SwiftInfo].direct_modules if x.swift]
         bucketize_args["swift_module"] = module_names[0] if module_names else None
@@ -279,7 +282,7 @@ def _apple_resource_aspect_impl(target, ctx):
     apple_debug_infos = []
     apple_dsym_bundle_infos = []
     inherited_apple_resource_infos = []
-    provider_deps = ["deps", "private_deps"] + collect_args.get("res_attrs", [])
+    provider_deps = ["deps", "private_deps", "implementation_deps"] + collect_args.get("res_attrs", [])
     for attr in provider_deps:
         if hasattr(ctx.rule.attr, attr):
             targets = getattr(ctx.rule.attr, attr)
@@ -351,7 +354,7 @@ def _apple_resource_aspect_impl(target, ctx):
 
 apple_resource_aspect = aspect(
     implementation = _apple_resource_aspect_impl,
-    attr_aspects = ["data", "deps", "private_deps", "resources", "structured_resources"],
+    attr_aspects = ["data", "deps", "private_deps", "implementation_deps", "resources", "structured_resources"],
     attrs = dicts.add(
         apple_support.action_required_attrs(),
         apple_toolchain_utils.shared_attrs(),

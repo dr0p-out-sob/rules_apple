@@ -34,11 +34,16 @@ part on the language used for XCFramework library identifiers:
 
 load("@bazel_skylib//lib:dicts.bzl", "dicts")
 load(
+    "@build_bazel_apple_support//configs:platforms.bzl",
+    "CPU_TO_DEFAULT_PLATFORM_NAME",
+)
+load(
     "@build_bazel_rules_apple//apple/build_settings:build_settings.bzl",
     "build_settings_labels",
 )
 
 _supports_visionos = hasattr(apple_common.platform_type, "visionos")
+_is_bazel_7 = not hasattr(apple_common, "apple_crosstool_transition")
 
 _PLATFORM_TYPE_TO_CPUS_FLAG = {
     "ios": "//command_line_option:ios_multi_cpus",
@@ -46,6 +51,13 @@ _PLATFORM_TYPE_TO_CPUS_FLAG = {
     "tvos": "//command_line_option:tvos_cpus",
     "visionos": "//command_line_option:visionos_cpus",
     "watchos": "//command_line_option:watchos_cpus",
+}
+
+_CPU_TO_DEFAULT_PLATFORM_FLAG = {
+    cpu: "@build_bazel_apple_support//platforms:{}_platform".format(
+        platform_name,
+    )
+    for cpu, platform_name in CPU_TO_DEFAULT_PLATFORM_NAME.items()
 }
 
 def _platform_specific_cpu_setting_name(platform_type):
@@ -134,9 +146,7 @@ def _cpu_string(*, environment_arch, platform_type, settings = {}):
         cpu_value = settings["//command_line_option:cpu"]
         if cpu_value.startswith("visionos_"):
             return cpu_value
-        if cpu_value == "darwin_arm64":
-            return "visionos_sim_arm64"
-        return "visionos_x86_64"
+        return "visionos_sim_arm64"
     if platform_type == "macos":
         if environment_arch:
             return "darwin_{}".format(environment_arch)
@@ -154,13 +164,6 @@ def _cpu_string(*, environment_arch, platform_type, settings = {}):
         if tvos_cpus:
             return "tvos_{}".format(tvos_cpus[0])
         return "tvos_x86_64"
-    if platform_type == "visionos":
-        if environment_arch:
-            return "visionos_{}".format(environment_arch)
-        visionos_cpus = settings["//command_line_option:visionos_cpus"]
-        if visionos_cpus:
-            return "visionos_{}".format(visionos_cpus[0])
-        return "visionos_x86_64"
     if platform_type == "watchos":
         if environment_arch:
             return "watchos_{}".format(environment_arch)
@@ -237,7 +240,13 @@ def _command_line_options(
     Returns:
         A dictionary of `"//command_line_option"`s defined for the current target.
     """
+    cpu = _cpu_string(
+        environment_arch = environment_arch,
+        platform_type = platform_type,
+        settings = settings,
+    )
 
+    default_platforms = [settings[_CPU_TO_DEFAULT_PLATFORM_FLAG[cpu]]] if _is_bazel_7 else []
     return {
         build_settings_labels.use_tree_artifacts_outputs: force_bundle_outputs if force_bundle_outputs else settings[build_settings_labels.use_tree_artifacts_outputs],
         "//command_line_option:apple configuration distinguisher": "applebin_" + platform_type,
@@ -247,17 +256,13 @@ def _command_line_options(
         # architecture and environment, therefore we set `environment_arch` when it is available.
         "//command_line_option:apple_split_cpu": environment_arch if environment_arch else "",
         "//command_line_option:compiler": None,
-        "//command_line_option:cpu": _cpu_string(
-            environment_arch = environment_arch,
-            platform_type = platform_type,
-            settings = settings,
-        ),
+        "//command_line_option:cpu": cpu,
         "//command_line_option:crosstool_top": (
             settings["//command_line_option:apple_crosstool_top"]
         ),
         "//command_line_option:fission": [],
         "//command_line_option:grte_top": None,
-        "//command_line_option:platforms": [apple_platforms[0]] if apple_platforms else [],
+        "//command_line_option:platforms": [apple_platforms[0]] if apple_platforms else default_platforms,
         "//command_line_option:ios_minimum_os": _min_os_version_or_none(
             minimum_os_version = minimum_os_version,
             platform = "ios",
@@ -385,7 +390,7 @@ def _apple_rule_base_transition_impl(settings, attr):
 _apple_rule_common_transition_inputs = [
     build_settings_labels.use_tree_artifacts_outputs,
     "//command_line_option:apple_crosstool_top",
-]
+] + _CPU_TO_DEFAULT_PLATFORM_FLAG.values()
 _apple_rule_base_transition_inputs = _apple_rule_common_transition_inputs + [
     "//command_line_option:cpu",
     "//command_line_option:ios_multi_cpus",
@@ -667,6 +672,11 @@ def _xcframework_transition_impl(settings, attr):
             target_environments = target_environments,
         )
         output_dictionary = dicts.add(command_line_options, output_dictionary)
+
+    if not output_dictionary:
+        fail("Missing a platform type attribute. At least one of 'ios', " +
+             "'tvos', 'visionos', 'watchos', or 'macos' attribute is mandatory.")
+
     return output_dictionary
 
 _xcframework_transition = transition(

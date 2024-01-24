@@ -87,13 +87,21 @@ def _tvos_unit_test_bundle_impl(ctx):
 
 def _tvos_ui_test_impl(ctx):
     """Implementation of tvos_ui_test."""
-    return apple_test_rule_support.apple_test_rule_impl(ctx, "xcuitest") + [
+    return apple_test_rule_support.apple_test_rule_impl(
+        ctx = ctx,
+        requires_dossiers = False,
+        test_type = "xcuitest",
+    ) + [
         new_tvosxctestbundleinfo(),
     ]
 
 def _tvos_unit_test_impl(ctx):
     """Implementation of tvos_unit_test."""
-    return apple_test_rule_support.apple_test_rule_impl(ctx, "xctest") + [
+    return apple_test_rule_support.apple_test_rule_impl(
+        ctx = ctx,
+        requires_dossiers = False,
+        test_type = "xctest",
+    ) + [
         new_tvosxctestbundleinfo(),
     ]
 
@@ -123,6 +131,7 @@ _tvos_internal_ui_test_bundle = rule_factory.create_apple_rule(
         rule_attrs.infoplist_attrs(
             default_infoplist = rule_attrs.defaults.test_bundle_infoplist,
         ),
+        rule_attrs.ipa_post_processor_attrs(),
         rule_attrs.platform_attrs(
             add_environment_plist = True,
             platform_type = "tvos",
@@ -196,6 +205,7 @@ _tvos_internal_unit_test_bundle = rule_factory.create_apple_rule(
         rule_attrs.infoplist_attrs(
             default_infoplist = rule_attrs.defaults.test_bundle_infoplist,
         ),
+        rule_attrs.ipa_post_processor_attrs(),
         rule_attrs.platform_attrs(
             add_environment_plist = True,
             platform_type = "tvos",

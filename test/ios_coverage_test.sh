@@ -267,18 +267,18 @@ function test_standalone_unit_test_coverage_coverage_manifest() {
   create_common_files
   do_coverage ios --test_output=errors --ios_minimum_os=9.0 --experimental_use_llvm_covmap //app:coverage_manifest_test || fail "Should build"
   assert_contains "SharedLogic.m:-\[SharedLogic doSomething\]" "test-testlogs/app/coverage_manifest_test/coverage.dat"
-  assert_contains "SF:./app/SharedLogic.m" "test-testlogs/app/coverage_manifest_test/coverage.dat"
+  assert_contains "SF:app/SharedLogic.m" "test-testlogs/app/coverage_manifest_test/coverage.dat"
   cat "test-testlogs/app/coverage_manifest_test/coverage.dat"
-  (! grep "SF:" "test-testlogs/app/coverage_manifest_test/coverage.dat" | grep -v "SF:./app/SharedLogic.m") || fail "Should not contain any other files"
+  (! grep "SF:" "test-testlogs/app/coverage_manifest_test/coverage.dat" | grep -v "SF:app/SharedLogic.m") || fail "Should not contain any other files"
 }
 
 function test_standalone_unit_test_coverage_coverage_manifest_new_runner() {
   create_common_files
   do_coverage ios --test_output=errors --ios_minimum_os=9.0 --experimental_use_llvm_covmap //app:coverage_manifest_test_new_runner || fail "Should build"
   assert_contains "SharedLogic.m:-\[SharedLogic doSomething\]" "test-testlogs/app/coverage_manifest_test_new_runner/coverage.dat"
-  assert_contains "SF:./app/SharedLogic.m" "test-testlogs/app/coverage_manifest_test_new_runner/coverage.dat"
+  assert_contains "SF:app/SharedLogic.m" "test-testlogs/app/coverage_manifest_test_new_runner/coverage.dat"
   cat test-testlogs/app/coverage_manifest_test_new_runner/coverage.dat
-  (! grep "SF:" "test-testlogs/app/coverage_manifest_test_new_runner/coverage.dat" | grep -v "SF:./app/SharedLogic.m") || fail "Should not contain other files"
+  (! grep "SF:" "test-testlogs/app/coverage_manifest_test_new_runner/coverage.dat" | grep -v "SF:app/SharedLogic.m") || fail "Should not contain other files"
 }
 
 function test_hosted_unit_test_coverage() {
@@ -290,9 +290,16 @@ function test_hosted_unit_test_coverage() {
   # Validate coverage for the hosting binary is included
   assert_contains "FN:3,foo" "test-testlogs/app/hosted_test/coverage.dat"
 
+  if [ -d "test-bin/app/hosted_test.runfiles/_main" ]; then
+    # Bzlmod always uses '_main' for current repository
+    path="test-bin/app/hosted_test.runfiles/_main/app/hosted_test.zip"
+  else
+    path="test-bin/app/hosted_test.runfiles/build_bazel_rules_apple_integration_tests/app/hosted_test.zip"
+  fi
+
   # Validate that the symbol called from the hosted binary exists and is undefined
   unzip_single_file \
-    "test-bin/app/hosted_test.runfiles/build_bazel_rules_apple_integration_tests/app/hosted_test.zip" \
+    "$path" \
     "hosted_test.xctest/hosted_test" \
     nm -u - | grep foo || fail "Undefined 'foo' symbol not found"
 }

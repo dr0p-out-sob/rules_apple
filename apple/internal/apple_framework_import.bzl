@@ -281,6 +281,7 @@ def _apple_dynamic_framework_import_impl(ctx):
         kind = "dynamic",
         label = label,
         libraries = [] if ctx.attr.bundle_only else framework.binary_imports,
+        swiftinterface_imports = framework.swift_interface_imports,
         swiftmodule_imports = framework.swift_module_imports,
     )
     providers.append(cc_info)
@@ -288,7 +289,7 @@ def _apple_dynamic_framework_import_impl(ctx):
     # Create AppleDynamicFramework provider.
     framework_groups = _grouped_framework_files(framework_imports)
     framework_dirs_set = depset(framework_groups.keys())
-    providers.append(apple_common.new_dynamic_framework_provider(
+    providers.append(framework_import_support.new_dynamic_framework_provider(
         objc = objc_provider,
         cc_info = cc_info,
         framework_dirs = framework_dirs_set,
@@ -434,6 +435,7 @@ def _apple_static_framework_import_impl(ctx):
             label = label,
             libraries = framework.binary_imports,
             linkopts = linkopts,
+            swiftinterface_imports = framework.swift_interface_imports,
             swiftmodule_imports = framework.swift_module_imports,
         ),
     )

@@ -81,6 +81,7 @@ bzl_library(
         "//apple:__subpackages__",
     ],
     deps = [
+        "//apple/internal:header_map_support",
         "@bazel_skylib//lib:paths",
         "@build_bazel_rules_swift//swift",
     ],
@@ -299,6 +300,7 @@ bzl_library(
         ":cc_info_support",
         ":entitlements_support",
         ":features_support",
+        ":framework_import_support",
         ":linking_support",
         ":outputs",
         ":partials",
@@ -373,6 +375,7 @@ bzl_library(
         ":codesigning_support",
         ":entitlements_support",
         ":features_support",
+        ":framework_import_support",
         ":linking_support",
         ":outputs",
         ":partials",
@@ -403,14 +406,6 @@ bzl_library(
         ":experimental",
         ":intermediates",
         "@bazel_skylib//lib:paths",
-    ],
-)
-
-bzl_library(
-    name = "bitcode_support",
-    srcs = ["bitcode_support.bzl"],
-    visibility = [
-        "//apple:__subpackages__",
     ],
 )
 
@@ -633,6 +628,7 @@ bzl_library(
     deps = [
         "//apple/build_settings",
         "@bazel_skylib//lib:dicts",
+        "@build_bazel_apple_support//configs:platforms",
     ],
 )
 
@@ -649,6 +645,7 @@ bzl_library(
         ":cc_info_support",
         ":entitlements_support",
         ":features_support",
+        ":framework_import_support",
         ":linking_support",
         ":outputs",
         ":partials",
@@ -683,6 +680,7 @@ bzl_library(
         ":bundling_support",
         ":entitlements_support",
         ":features_support",
+        ":framework_import_support",
         ":linking_support",
         ":outputs",
         ":partials",
@@ -693,6 +691,7 @@ bzl_library(
         ":rule_attrs",
         ":rule_factory",
         ":rule_support",
+        ":run_support",
         ":stub_support",
         ":swift_support",
         "//apple:providers",
@@ -716,6 +715,7 @@ bzl_library(
         ":bundling_support",
         ":entitlements_support",
         ":features_support",
+        ":framework_import_support",
         ":linking_support",
         ":outputs",
         ":partials",
@@ -791,6 +791,7 @@ bzl_library(
     ],
     deps = [
         "//apple:providers",
+        "//apple/internal/providers:apple_debug_info",
     ],
 )
 
@@ -805,6 +806,28 @@ bzl_library(
         "//apple/internal/aspects:docc_archive_aspect",
         "@bazel_skylib//lib:dicts",
         "@build_bazel_apple_support//lib:apple_support",
+    ],
+)
+
+bzl_library(
+    name = "header_map",
+    srcs = ["header_map.bzl"],
+    visibility = [
+        "//apple:__subpackages__",
+    ],
+    deps = [
+        "@build_bazel_rules_swift//swift",
+    ],
+)
+
+bzl_library(
+    name = "header_map_support",
+    srcs = ["header_map_support.bzl"],
+    visibility = [
+        "//apple:__subpackages__",
+    ],
+    deps = [
+        ":header_map",
     ],
 )
 

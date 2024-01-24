@@ -111,7 +111,7 @@ EOF
   ! do_build ios //app:app \
     || fail "Should fail build"
 
-  expect_log 'Target "//app:app" is missing CFBundleVersion.'
+  expect_log 'Target "@@\?//app:app" is missing CFBundleVersion.'
 }
 
 # Test missing the CFBundleShortVersionString fails the build.
@@ -132,7 +132,7 @@ EOF
   ! do_build ios //app:app \
     || fail "Should fail build"
 
-  expect_log 'Target "//app:app" is missing CFBundleShortVersionString.'
+  expect_log 'Target "@@\?//app:app" is missing CFBundleShortVersionString.'
 }
 
 # Tests that the IPA post-processor is executed and can modify the bundle.
@@ -288,8 +288,8 @@ EOF
     # For simulator builds, entitlements are added as a Mach-O section in
     # the binary.
     do_build ios "$@" //app:app || fail "Should build"
-    unzip_single_file "test-bin/app/app.ipa" "Payload/app.app/app" | \
-        print_debug_entitlements - > "${TEST_TMPDIR}/dumped_entitlements"
+    unzip_single_file "test-bin/app/app.ipa" "Payload/app.app/app" > "${TEST_TMPDIR}/binary"
+    print_debug_entitlements "${TEST_TMPDIR}/binary" "${TEST_TMPDIR}/dumped_entitlements"
 
     readonly FILE_TO_CHECK="${TEST_TMPDIR}/dumped_entitlements"
 
@@ -380,9 +380,9 @@ EOF
     do_build ios //app:app-with-hyphen || fail "Should build"
 
     unzip_single_file "test-bin/app/app-with-hyphen.ipa" \
-        "Payload/app-with-hyphen.app/app-with-hyphen" | \
-        print_debug_entitlements - | \
-        grep -sq "<key>test-an-entitlement</key>" || \
+        "Payload/app-with-hyphen.app/app-with-hyphen" > "${TEST_TMPDIR}/binary"
+    print_debug_entitlements "${TEST_TMPDIR}/binary" "${TEST_TMPDIR}/dumped_entitlements"
+    grep -sq "<key>test-an-entitlement</key>" "${TEST_TMPDIR}/dumped_entitlements" || \
         fail "Failed to find custom entitlement"
   fi
 }
@@ -411,7 +411,7 @@ EOF
   ! do_build ios //app:app || fail "Should fail"
   # The fact that multiple things are tried is left as an impl detail and
   # only the final message is looked for.
-  expect_log 'While processing target "//app:app", failed to extract from the provisioning profile "app/bogus.mobileprovision".'
+  expect_log 'While processing target "@@\?//app:app", failed to extract from the provisioning profile "app/bogus.mobileprovision".'
 }
 
 # Tests that applications can transitively depend on apple_resource_bundle, and

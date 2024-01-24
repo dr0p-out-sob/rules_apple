@@ -103,12 +103,15 @@ def apple_shell_test(
         data = [
             src,
             "//:for_bazel_tests",
-            "//test:external_deps",
+            "//:platform_mappings",
             "//test:apple_shell_testutils.sh",
             "//test/testdata/provisioning:integration_testing_profiles",
             "//test:unittest.bash",
+            "@build_bazel_rules_apple//:BUILD",
         ] + (data or []),
-        deps = deps or [],
+        deps = [
+            "@bazel_tools//tools/bash/runfiles",
+        ] + (deps or []),
         tags = ["requires-darwin"] + (tags or []),
         **kwargs
     )

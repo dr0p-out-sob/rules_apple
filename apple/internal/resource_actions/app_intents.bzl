@@ -69,12 +69,15 @@ def generate_app_intents_metadata_bundle(
 set -euo pipefail
 
 exit_status=0
-output=$($@ --sdk-root "$SDKROOT" --toolchain-dir "$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain" 2>&1 || exit_status=$?)
+output=$($@ --sdk-root "$SDKROOT" --toolchain-dir "$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain" 2>&1) || exit_status=$?
 
 if [[ "$exit_status" -ne 0 ]]; then
   echo "$output" >&2
   exit $exit_status
 elif [[ "$output" == *error:* ]]; then
+  echo "$output" >&2
+  exit 1
+elif [[ "$output" == *"skipping writing output"* ]]; then
   echo "$output" >&2
   exit 1
 fi
