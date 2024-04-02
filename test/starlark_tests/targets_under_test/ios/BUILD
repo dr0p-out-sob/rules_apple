@@ -83,6 +83,23 @@ ios_application(
     ],
 )
 
+ios_application(
+    name = "app_minimal_with_space_and_post_processor",
+    bundle_id = "com.google.example",
+    bundle_name = "app minimal",
+    families = ["iphone"],
+    infoplists = [
+        "//test/starlark_tests/resources:Info.plist",
+    ],
+    ipa_post_processor = "//test/starlark_tests/targets_under_test/apple:ipa_post_processor_verify_codesigning",
+    minimum_os_version = common.min_os_ios.baseline,
+    provisioning_profile = "//test/testdata/provisioning:integration_testing_ios.mobileprovision",
+    tags = common.fixture_tags,
+    deps = [
+        "//test/starlark_tests/resources:objc_main_lib",
+    ],
+)
+
 xcarchive(
     name = "app_minimal.xcarchive",
     bundle = ":app_minimal",
@@ -4887,4 +4904,29 @@ docc_archive(
     fallback_bundle_identifier = "com.google.example.framework",
     fallback_bundle_version = "1.0",
     fallback_display_name = "BasicFramework",
+)
+
+# ---------------------------------------------------------------------------------------
+# Target for extension resource bundling.
+
+ios_extension(
+    name = "ext_with_resources",
+    bundle_id = "com.google.example.ext_with_resources",
+    entitlements = "//test/starlark_tests/resources:entitlements.plist",
+    families = [
+        "iphone",
+        "ipad",
+    ],
+    infoplists = [
+        "//test/starlark_tests/resources:Info.plist",
+    ],
+    minimum_os_version = common.min_os_ios.baseline,
+    provisioning_profile = "//test/testdata/provisioning:integration_testing_ios.mobileprovision",
+    resources = [
+        "//test/starlark_tests/resources:additional.txt",
+    ],
+    tags = common.fixture_tags,
+    deps = [
+        "//test/starlark_tests/resources:objc_main_lib",
+    ],
 )

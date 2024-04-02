@@ -30,7 +30,7 @@ export MIN_OS_TVOS_NPLUS1="13.0"
 export MIN_OS_MACOS="10.13"
 export MIN_OS_MACOS_NPLUS1="10.14"
 
-export MIN_OS_WATCHOS="4.0"
+export MIN_OS_WATCHOS="7.0"
 
 # Usage: assert_exists <path>
 #
@@ -384,7 +384,7 @@ function current_archs() {
           value="$(echo "$option" | cut -d= -f2)"
         else
           # Eliminate `sim_` prefixes from `cpu`s as it is not part of the arch.
-          value="$(echo "$option" | cut -d= -f2 | sed 's/sim_//g')"
+          value="$(echo "$option" | cut -d= -f2 | sed -e 's/sim_//g' -e 's/device_//g')"
         fi
         echo "$value" | tr "," "\n"
         return
