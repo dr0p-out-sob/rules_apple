@@ -14,6 +14,7 @@
 
 """Implementation of visionOS rules."""
 
+load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain")
 load(
     "@build_bazel_rules_apple//apple/internal:apple_product_type.bzl",
     "apple_product_type",
@@ -133,7 +134,6 @@ load(
     "@build_bazel_rules_swift//swift:swift.bzl",
     "SwiftInfo",
 )
-load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain")
 
 visibility([
     "//apple/...",
@@ -344,6 +344,7 @@ Resolved Xcode is version {xcode_version}.
             launch_storyboard = None,
             locales_to_include = ctx.attr.locales_to_include,
             platform_prerequisites = platform_prerequisites,
+            primary_icon_name = ctx.attr.primary_app_icon,
             resource_deps = resource_deps,
             rule_descriptor = rule_descriptor,
             rule_label = label,
@@ -407,17 +408,31 @@ Resolved Xcode is version {xcode_version}.
         actions = actions,
         label_name = label.name,
     )
-    run_support.register_simulator_executable(
-        actions = actions,
-        bundle_extension = bundle_extension,
-        bundle_name = bundle_name,
-        label_name = label.name,
-        output = executable,
-        platform_prerequisites = platform_prerequisites,
-        predeclared_outputs = predeclared_outputs,
-        rule_descriptor = rule_descriptor,
-        runner_template = ctx.file._runner_template,
-    )
+
+    if platform_prerequisites.platform.is_device:
+        run_support.register_device_executable(
+            actions = actions,
+            bundle_extension = bundle_extension,
+            bundle_name = bundle_name,
+            label_name = label.name,
+            output = executable,
+            platform_prerequisites = platform_prerequisites,
+            predeclared_outputs = predeclared_outputs,
+            rule_descriptor = rule_descriptor,
+            runner_template = ctx.file._device_runner_template,
+        )
+    else:
+        run_support.register_simulator_executable(
+            actions = actions,
+            bundle_extension = bundle_extension,
+            bundle_name = bundle_name,
+            label_name = label.name,
+            output = executable,
+            platform_prerequisites = platform_prerequisites,
+            predeclared_outputs = predeclared_outputs,
+            rule_descriptor = rule_descriptor,
+            runner_template = ctx.file._simulator_runner_template,
+        )
 
     archive = outputs.archive(
         actions = actions,
@@ -712,7 +727,9 @@ def _visionos_dynamic_framework_impl(ctx):
     providers = processor_result.providers
     additional_providers = []
     for provider in providers:
-        if type(provider) == "AppleDynamicFramework":
+        # HACK: this should be updated so we do not need to dynamically check the provider instance.
+        # See: https://github.com/bazelbuild/bazel/issues/22095
+        if hasattr(provider, "framework_files"):
             # Make the ObjC provider using the framework_files depset found
             # in the AppleDynamicFramework provider. This is to make the
             # visionos_dynamic_framework usable as a dependency in swift_library
@@ -1445,6 +1462,7 @@ visionos_application = rule_factory.create_apple_rule(
         rule_attrs.app_icon_attrs(
             icon_extension = ".solidimagestack",
             icon_parent_extension = ".xcassets",
+            supports_alternate_icons = True,
         ),
         rule_attrs.app_intents_attrs(
             deps_cfg = transition_support.apple_platform_split_transition,
@@ -1468,6 +1486,7 @@ visionos_application = rule_factory.create_apple_rule(
         rule_attrs.device_family_attrs(
             allowed_families = rule_attrs.defaults.allowed_families.visionos,
         ),
+        rule_attrs.device_runner_template_attr(),
         rule_attrs.infoplist_attrs(),
         rule_attrs.ipa_post_processor_attrs(),
         rule_attrs.locales_to_include_attrs(),

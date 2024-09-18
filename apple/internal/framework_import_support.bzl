@@ -14,17 +14,17 @@
 
 """Support methods for Apple framework import rules."""
 
-load("@build_bazel_rules_apple//apple/internal/utils:files.bzl", "files")
-load("@build_bazel_rules_apple//apple/internal:providers.bzl", "new_appleframeworkimportinfo")
-load("@build_bazel_rules_apple//apple:providers.bzl", "AppleFrameworkImportInfo")
-load("@build_bazel_rules_apple//apple/internal/utils:defines.bzl", "defines")
-load("@build_bazel_rules_apple//apple:utils.bzl", "group_files_by_directory")
+load("@bazel_skylib//lib:paths.bzl", "paths")
 load(
     "@build_bazel_rules_swift//swift:swift.bzl",
     "SwiftInfo",
     "swift_common",
 )
-load("@bazel_skylib//lib:paths.bzl", "paths")
+load("//apple:providers.bzl", "AppleFrameworkImportInfo")
+load("//apple:utils.bzl", "group_files_by_directory")
+load("//apple/internal:providers.bzl", "new_appleframeworkimportinfo")
+load("//apple/internal/utils:defines.bzl", "defines")
+load("//apple/internal/utils:files.bzl", "files")
 
 # TODO: Remove once we drop bazel 7.x
 _OBJC_PROVIDER_LINKING = hasattr(apple_common.new_objc_provider(), "linkopt")
@@ -201,6 +201,10 @@ def _classify_file_imports(config_vars, import_files):
         framework_relative_path = file.short_path.split(".framework/")[-1]
         if framework_relative_path.startswith("Headers/"):
             header_imports.append(file)
+            continue
+        if framework_relative_path.startswith("Modules/") and framework_relative_path.endswith(".abi.json"):
+            # Ignore abi.json files, as they don't matter in the build, and are most commonly used to detect source-breaking API changes during the evolution of a Swift library.
+            # See: https://github.com/swiftlang/swift/blob/main/lib/DriverTool/swift_api_digester_main.cpp
             continue
 
         # Unknown file type, sending to unknown (i.e. resources, Info.plist, etc.)
@@ -519,6 +523,7 @@ def _swift_info_from_module_interface(
         swiftinterface_file = swiftinterface_file,
         swift_infos = swift_infos,
         swift_toolchain = swift_toolchain,
+        target_name = ctx.label.name,
     )
 
     return swift_common.create_swift_info(

@@ -14,21 +14,18 @@
 
 """Implementation of iOS rules."""
 
+load("@bazel_skylib//lib:collections.bzl", "collections")
+load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain")
 load(
-    "@build_bazel_rules_apple//apple/internal/aspects:framework_provider_aspect.bzl",
-    "framework_provider_aspect",
-)
-load(
-    "@build_bazel_rules_apple//apple/internal/aspects:resource_aspect.bzl",
-    "apple_resource_aspect",
-)
-load(
-    "@build_bazel_rules_apple//apple/internal/utils:clang_rt_dylibs.bzl",
-    "clang_rt_dylibs",
-)
-load(
-    "@build_bazel_rules_apple//apple/internal/utils:main_thread_checker_dylibs.bzl",
-    "main_thread_checker_dylibs",
+    "@build_bazel_rules_apple//apple:providers.bzl",
+    "AppleBundleInfo",
+    "ApplePlatformInfo",
+    "IosAppClipBundleInfo",
+    "IosExtensionBundleInfo",
+    "IosFrameworkBundleInfo",
+    "IosImessageExtensionBundleInfo",
+    "IosStickerPackExtensionBundleInfo",
+    "WatchosApplicationBundleInfo",
 )
 load(
     "@build_bazel_rules_apple//apple/internal:apple_product_type.bzl",
@@ -45,12 +42,12 @@ load(
     "bundling_support",
 )
 load(
-    "@build_bazel_rules_apple//apple/internal:codesigning_support.bzl",
-    "codesigning_support",
-)
-load(
     "@build_bazel_rules_apple//apple/internal:cc_info_support.bzl",
     "cc_info_support",
+)
+load(
+    "@build_bazel_rules_apple//apple/internal:codesigning_support.bzl",
+    "codesigning_support",
 )
 load(
     "@build_bazel_rules_apple//apple/internal:entitlements_support.bzl",
@@ -59,6 +56,10 @@ load(
 load(
     "@build_bazel_rules_apple//apple/internal:features_support.bzl",
     "features_support",
+)
+load(
+    "@build_bazel_rules_apple//apple/internal:framework_import_support.bzl",
+    "libraries_to_link_for_dynamic_framework",
 )
 load(
     "@build_bazel_rules_apple//apple/internal:linking_support.bzl",
@@ -124,28 +125,27 @@ load(
     "transition_support",
 )
 load(
+    "@build_bazel_rules_apple//apple/internal/aspects:framework_provider_aspect.bzl",
+    "framework_provider_aspect",
+)
+load(
+    "@build_bazel_rules_apple//apple/internal/aspects:resource_aspect.bzl",
+    "apple_resource_aspect",
+)
+load(
     "@build_bazel_rules_apple//apple/internal/aspects:swift_dynamic_framework_aspect.bzl",
     "SwiftDynamicFrameworkInfo",
     "swift_dynamic_framework_aspect",
 )
 load(
-    "@build_bazel_rules_apple//apple/internal:framework_import_support.bzl",
-    "libraries_to_link_for_dynamic_framework",
+    "@build_bazel_rules_apple//apple/internal/utils:clang_rt_dylibs.bzl",
+    "clang_rt_dylibs",
 )
 load(
-    "@build_bazel_rules_apple//apple:providers.bzl",
-    "AppleBundleInfo",
-    "ApplePlatformInfo",
-    "IosAppClipBundleInfo",
-    "IosExtensionBundleInfo",
-    "IosFrameworkBundleInfo",
-    "IosImessageExtensionBundleInfo",
-    "IosStickerPackExtensionBundleInfo",
-    "WatchosApplicationBundleInfo",
+    "@build_bazel_rules_apple//apple/internal/utils:main_thread_checker_dylibs.bzl",
+    "main_thread_checker_dylibs",
 )
 load("@build_bazel_rules_swift//swift:swift.bzl", "SwiftInfo")
-load("@bazel_skylib//lib:collections.bzl", "collections")
-load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain")
 
 # TODO: Remove once we drop bazel 7.x
 _OBJC_PROVIDER_LINKING = hasattr(apple_common.new_objc_provider(), "linkopt")
@@ -374,6 +374,7 @@ def _ios_application_impl(ctx):
             launch_storyboard = ctx.file.launch_storyboard,
             locales_to_include = ctx.attr.locales_to_include,
             platform_prerequisites = platform_prerequisites,
+            primary_icon_name = ctx.attr.primary_app_icon,
             resource_deps = resource_deps,
             rule_descriptor = rule_descriptor,
             rule_label = label,
@@ -467,20 +468,33 @@ def _ios_application_impl(ctx):
         label_name = label.name,
     )
 
-    # TODO(b/254511920): Consider creating a custom build config for iOS simulator device/version.
-    run_support.register_simulator_executable(
-        actions = actions,
-        bundle_extension = bundle_extension,
-        bundle_name = bundle_name,
-        label_name = label.name,
-        output = executable,
-        platform_prerequisites = platform_prerequisites,
-        predeclared_outputs = predeclared_outputs,
-        rule_descriptor = rule_descriptor,
-        runner_template = ctx.file._runner_template,
-        simulator_device = ctx.fragments.objc.ios_simulator_device,
-        simulator_version = ctx.fragments.objc.ios_simulator_version,
-    )
+    if platform_prerequisites.platform.is_device:
+        run_support.register_device_executable(
+            actions = actions,
+            bundle_extension = bundle_extension,
+            bundle_name = bundle_name,
+            label_name = label.name,
+            output = executable,
+            platform_prerequisites = platform_prerequisites,
+            predeclared_outputs = predeclared_outputs,
+            rule_descriptor = rule_descriptor,
+            runner_template = ctx.file._device_runner_template,
+            device = apple_xplat_toolchain_info.build_settings.ios_device,
+        )
+    else:
+        run_support.register_simulator_executable(
+            actions = actions,
+            bundle_extension = bundle_extension,
+            bundle_name = bundle_name,
+            label_name = label.name,
+            output = executable,
+            platform_prerequisites = platform_prerequisites,
+            predeclared_outputs = predeclared_outputs,
+            rule_descriptor = rule_descriptor,
+            runner_template = ctx.file._simulator_runner_template,
+            simulator_device = ctx.fragments.objc.ios_simulator_device,
+            simulator_version = ctx.fragments.objc.ios_simulator_version,
+        )
 
     archive = outputs.archive(
         actions = actions,
@@ -772,20 +786,33 @@ def _ios_app_clip_impl(ctx):
         label_name = label.name,
     )
 
-    # TODO(b/254511920): Consider creating a custom build config for iOS simulator device/version.
-    run_support.register_simulator_executable(
-        actions = actions,
-        bundle_extension = bundle_extension,
-        bundle_name = bundle_name,
-        label_name = label.name,
-        output = executable,
-        platform_prerequisites = platform_prerequisites,
-        predeclared_outputs = predeclared_outputs,
-        rule_descriptor = rule_descriptor,
-        runner_template = ctx.file._runner_template,
-        simulator_device = ctx.fragments.objc.ios_simulator_device,
-        simulator_version = ctx.fragments.objc.ios_simulator_version,
-    )
+    if platform_prerequisites.platform.is_device:
+        run_support.register_device_executable(
+            actions = actions,
+            bundle_extension = bundle_extension,
+            bundle_name = bundle_name,
+            label_name = label.name,
+            output = executable,
+            platform_prerequisites = platform_prerequisites,
+            predeclared_outputs = predeclared_outputs,
+            rule_descriptor = rule_descriptor,
+            runner_template = ctx.file._device_runner_template,
+            device = apple_xplat_toolchain_info.build_settings.ios_device,
+        )
+    else:
+        run_support.register_simulator_executable(
+            actions = actions,
+            bundle_extension = bundle_extension,
+            bundle_name = bundle_name,
+            label_name = label.name,
+            output = executable,
+            platform_prerequisites = platform_prerequisites,
+            predeclared_outputs = predeclared_outputs,
+            rule_descriptor = rule_descriptor,
+            runner_template = ctx.file._simulator_runner_template,
+            simulator_device = ctx.fragments.objc.ios_simulator_device,
+            simulator_version = ctx.fragments.objc.ios_simulator_version,
+        )
 
     archive = outputs.archive(
         actions = actions,
@@ -1656,7 +1683,9 @@ def _ios_dynamic_framework_impl(ctx):
 
     additional_providers = []
     for provider in providers:
-        if type(provider) == "AppleDynamicFramework":
+        # HACK: this should be updated so we do not need to dynamically check the provider instance.
+        # See: https://github.com/bazelbuild/bazel/issues/22095
+        if hasattr(provider, "framework_files"):
             # Make the ObjC provider using the framework_files depset found
             # in the AppleDynamicFramework provider. This is to make the
             # ios_dynamic_framework usable as a dependency in swift_library
@@ -2518,6 +2547,7 @@ ios_application = rule_factory.create_apple_rule(
         rule_attrs.app_icon_attrs(
             icon_extension = ".appiconset",
             icon_parent_extension = ".xcassets",
+            supports_alternate_icons = True,
         ),
         rule_attrs.app_intents_attrs(
             deps_cfg = transition_support.apple_platform_split_transition,
@@ -2540,6 +2570,7 @@ ios_application = rule_factory.create_apple_rule(
             allowed_families = rule_attrs.defaults.allowed_families.ios,
             is_mandatory = True,
         ),
+        rule_attrs.device_runner_template_attr(),
         rule_attrs.infoplist_attrs(),
         rule_attrs.ipa_post_processor_attrs(),
         rule_attrs.launch_images_attrs(),
@@ -2652,6 +2683,7 @@ ios_app_clip = rule_factory.create_apple_rule(
             allowed_families = rule_attrs.defaults.allowed_families.ios,
             is_mandatory = True,
         ),
+        rule_attrs.device_runner_template_attr(),
         rule_attrs.infoplist_attrs(),
         rule_attrs.ipa_post_processor_attrs(),
         rule_attrs.locales_to_include_attrs(),

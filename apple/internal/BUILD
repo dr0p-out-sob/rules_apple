@@ -1,18 +1,18 @@
 # Internal implementation details of the Apple rules.
 
-load(
-    ":environment_plist.bzl",
-    "environment_plist",
-)
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load(
+    "//apple/build_settings:build_settings.bzl",
+    "build_settings_labels",
+)
 load(
     "//apple/internal:apple_toolchains.bzl",
     "apple_mac_tools_toolchain",
     "apple_xplat_tools_toolchain",
 )
 load(
-    "//apple/build_settings:build_settings.bzl",
-    "build_settings_labels",
+    ":environment_plist.bzl",
+    "environment_plist",
 )
 
 licenses(["notice"])
@@ -319,6 +319,7 @@ bzl_library(
         "//apple:providers",
         "//apple/internal/aspects:framework_provider_aspect",
         "//apple/internal/aspects:resource_aspect",
+        "//apple/internal/aspects:resource_aspect_hint",
         "//apple/internal/utils:clang_rt_dylibs",
         "//apple/internal/utils:main_thread_checker_dylibs",
         "@bazel_skylib//lib:collections",
@@ -394,6 +395,7 @@ bzl_library(
         "//apple:providers",
         "//apple/internal/aspects:framework_provider_aspect",
         "//apple/internal/aspects:resource_aspect",
+        "//apple/internal/aspects:resource_aspect_hint",
         "//apple/internal/utils:clang_rt_dylibs",
         "//apple/internal/utils:main_thread_checker_dylibs",
     ],
@@ -424,6 +426,7 @@ bzl_library(
         "//apple/internal/partials:apple_bundle_info",
         "//apple/internal/partials:apple_symbols_file",
         "//apple/internal/partials:binary",
+        "//apple/internal/partials:cc_info_dylibs",
         "//apple/internal/partials:clang_rt_dylibs",
         "//apple/internal/partials:codesigning_dossier",
         "//apple/internal/partials:debug_symbols",
@@ -532,6 +535,7 @@ bzl_library(
         "//apple/internal/aspects:app_intents_aspect",
         "//apple/internal/aspects:framework_provider_aspect",
         "//apple/internal/aspects:resource_aspect",
+        "//apple/internal/aspects:resource_aspect_hint",
         "//apple/internal/aspects:swift_usage_aspect",
         "//apple/internal/testing:apple_test_bundle_support",
         "@bazel_skylib//lib:dicts",
@@ -555,6 +559,7 @@ bzl_library(
         "//apple:providers",
         "//apple/internal/aspects:framework_provider_aspect",
         "//apple/internal/aspects:resource_aspect",
+        "//apple/internal/aspects:resource_aspect_hint",
         "//apple/internal/aspects:swift_dynamic_framework_aspect",
         "//apple/internal/aspects:swift_usage_aspect",
         "//apple/internal/testing:apple_test_bundle_support",
@@ -666,6 +671,7 @@ bzl_library(
         "//apple:providers",
         "//apple/internal/aspects:framework_provider_aspect",
         "//apple/internal/aspects:resource_aspect",
+        "//apple/internal/aspects:resource_aspect_hint",
         "//apple/internal/utils:clang_rt_dylibs",
         "//apple/internal/utils:main_thread_checker_dylibs",
         "@bazel_tools//tools/cpp:toolchain_utils.bzl",
@@ -702,6 +708,7 @@ bzl_library(
         "//apple:providers",
         "//apple/internal/aspects:framework_provider_aspect",
         "//apple/internal/aspects:resource_aspect",
+        "//apple/internal/aspects:resource_aspect_hint",
         "//apple/internal/utils:clang_rt_dylibs",
         "//apple/internal/utils:main_thread_checker_dylibs",
         "@bazel_skylib//lib:sets",
@@ -737,6 +744,7 @@ bzl_library(
         "//apple:providers",
         "//apple/internal/aspects:framework_provider_aspect",
         "//apple/internal/aspects:resource_aspect",
+        "//apple/internal/aspects:resource_aspect_hint",
         "//apple/internal/utils:clang_rt_dylibs",
         "//apple/internal/utils:main_thread_checker_dylibs",
         "@bazel_skylib//lib:sets",
@@ -770,6 +778,7 @@ bzl_library(
         ":transition_support",
         "//apple:providers",
         "//apple/internal/aspects:resource_aspect",
+        "//apple/internal/aspects:resource_aspect_hint",
         "//apple/internal/aspects:swift_usage_aspect",
         "//apple/internal/utils:files",
         "@bazel_skylib//lib:partial",
