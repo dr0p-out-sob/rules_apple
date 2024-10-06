@@ -863,9 +863,6 @@ apple_xcframework(
     name = "ios_swift_3p_xcframework_with_generated_header",
     bundle_id = "com.google.example",
     bundle_name = "Swift3PFmwkWithGenHeader",
-    # TODO(b/239957001): Remove this when the rule no longer forces library
-    # evolution.
-    features = ["apple.no_legacy_swiftinterface"],
     infoplists = [
         "//test/starlark_tests/resources:Info.plist",
     ],
@@ -939,6 +936,16 @@ objc_library(
     tags = common.fixture_tags,
 )
 
+objc_library(
+    name = "fmwk_lib_with_resources_upper_lib",
+    srcs = [
+        "//test/starlark_tests/resources:shared.h",
+        "//test/starlark_tests/resources:shared.m",
+    ],
+    tags = common.fixture_tags,
+    deps = [":fmwk_lib_with_resources"],
+)
+
 apple_static_xcframework(
     name = "ios_static_xcframework_with_resources",
     ios = {
@@ -1005,6 +1012,23 @@ apple_static_xcframework_import(
     ],
     tags = ["manual"],
     xcframework_imports = [":generated_ios_static_xcframework_with_resources"],
+)
+
+apple_static_xcframework(
+    name = "ios_xcframework_bundling_static_fmwks_with_avoid_deps",
+    avoid_deps = [":fmwk_lib_with_resources"],
+    ios = {
+        "simulator": [
+            "x86_64",
+            "arm64",
+        ],
+        "device": ["arm64"],
+    },
+    minimum_os_versions = {
+        "ios": common.min_os_ios.baseline,
+    },
+    tags = common.fixture_tags,
+    deps = [":fmwk_lib_with_resources_upper_lib"],
 )
 
 apple_static_xcframework(
@@ -1244,7 +1268,6 @@ swift_library(
 swift_library(
     name = "Swift3PFmwkWithGenHeader",
     srcs = ["DummyFmwk.swift"],
-    features = ["swift.enable_library_evolution"],
     generates_header = True,
     module_name = "Swift3PFmwkWithGenHeader",
     tags = common.fixture_tags,
