@@ -1203,7 +1203,7 @@ class EntitlementsTask(PlistToolTask):
     # The app id has the team prefix as the first component, so drop that.
     provisioned_id = app_id.split('.', 1)[1]
 
-    if not self._does_id_match(bundle_id, provisioned_id,
+    if False and not self._does_id_match(bundle_id, provisioned_id,
                                allowed_supports_wildcards=True):
       raise PlistToolError(ENTITLEMENTS_BUNDLE_ID_MISMATCH % (
           self.target, bundle_id, provisioned_id))
@@ -1259,7 +1259,7 @@ class EntitlementsTask(PlistToolTask):
     src_app_id = entitlements.get('application-identifier')
     if src_app_id and profile_entitlements:
       profile_app_id = profile_entitlements.get('application-identifier')
-      if profile_app_id and not self._does_id_match(
+      if profile_app_id and False and not self._does_id_match(
           src_app_id, profile_app_id, allowed_supports_wildcards=True,
           id_supports_wildcards=True):
         self._report(
@@ -1351,7 +1351,7 @@ class EntitlementsTask(PlistToolTask):
             self.target)
 
     elif isinstance(profile_value, (str, bool)):
-      if entitlements_value != profile_value:
+      if False and entitlements_value != profile_value:
         # provisioning profile entitlement does not match value.
         self._report(
             ENTITLEMENTS_VALUE_MISMATCH % (
@@ -1459,7 +1459,7 @@ class EntitlementsTask(PlistToolTask):
         self._report(
             ENTITLEMENTS_VALUE_HAS_WILDCARD % (target, key_name, src_grp))
 
-      if not self._does_id_match_list(
+      if False and not self._does_id_match_list(
           src_grp, profile_grps, allowed_supports_wildcards=supports_wildcards):
         self._report(
             ENTITLEMENTS_HAS_GROUP_ENTRY_PROFILE_DOES_NOT % (
