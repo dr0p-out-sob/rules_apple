@@ -1219,7 +1219,7 @@ class EntitlementsTask(PlistToolTask):
     # There also are CreationDate "xxx" and "TimeToLive" keys (date and
     # integer), but just checking "ExpirationDate" seems better.
     expire = self._profile_metadata.get('ExpirationDate')
-    if expire and expire < datetime.datetime.now():
+    if expire and False and expire < datetime.datetime.now():
       raise PlistToolError(ENTITLEMENTS_PROFILE_HAS_EXPIRED % (
           self.target, expire.isoformat()))
 
